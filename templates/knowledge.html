@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}知识库 - 档案智库{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="bi bi-book me-2" style="color: #198754;"></i>知识库</h4>
+    <span class="text-muted small">共 {{ pagination.total }} 条</span>
+</div>
+
+<div class="row g-4">
+    <!-- 分类侧边栏 -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h6 class="mb-0"><i class="bi bi-folder me-2"></i>分类导航</h6>
+            </div>
+            <div class="list-group list-group-flush">
+                <a href="{{ url_for('main.knowledge_list') }}" class="list-group-item list-group-item-action border-0 {% if not current_category_id %}active{% endif %}" style="{% if not current_category_id %}background-color: #198754; border-color: #198754;{% endif %}">
+                    全部分类
+                </a>
+                {% for cat in categories %}
+                {% if not cat.parent_id %}
+                <a href="{{ url_for('main.knowledge_list', category_id=cat.id) }}" class="list-group-item list-group-item-action border-0 d-flex justify-content-between {% if current_category_id == cat.id %}active{% endif %}" style="{% if current_category_id == cat.id %}background-color: #198754; border-color: #198754;{% endif %}">
+                    <span><i class="bi {{ cat.icon or 'bi-folder' }} me-2"></i>{{ cat.name }}</span>
+                    <span class="badge bg-light text-dark rounded-pill">{{ cat.knowledge_items.count() }}</span>
+                </a>
+                {% for sub in cat.children %}
+                <a href="{{ url_for('main.knowledge_list', category_id=sub.id) }}" class="list-group-item list-group-item-action border-0 ps-4 {% if current_category_id == sub.id %}active{% endif %}" style="font-size: 0.9rem; {% if current_category_id == sub.id %}background-color: #198754; border-color: #198754;{% endif %}">
+                    <i class="bi {{ sub.icon or 'bi-file-earmark' }} me-2"></i>{{ sub.name }}
+                </a>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 内容区 -->
+    <div class="col-md-9">
+        <!-- 搜索 -->
+        <form class="mb-3" method="get">
+            <div class="input-group">
+                <input type="hidden" name="category_id" value="{{ current_category_id }}">
+                <input type="search" class="form-control" name="q" value="{{ keyword }}" placeholder="搜索知识库...">
+                <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+            </div>
+        </form>
+
+        {% if items %}
+        <div class="list-group shadow-sm">
+            {% for item in items %}
+            <a href="{{ url_for('main.knowledge_detail', item_id=item.id) }}" class="list-group-item list-group-item-action border-0 py-3">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="fw-medium">
+                            {% if item.is_pinned %}<span class="badge me-1" style="background-color: #D4A84B; color: #1A2A4A;">置顶</span>{% endif %}
+                            {{ item.title }}
+                        </div>
+                        <small class="text-muted">
+                            <i class="bi {{ item.category.icon or 'bi-folder' }} me-1"></i>{{ item.category.name if item.category else '' }}
+                            {% if item.source %}<span class="mx-2">|</span> <i class="bi bi-link-45deg me-1"></i>{{ item.source }}{% endif %}
+                        </small>
+                    </div>
+                    <div class="text-end">
+                        <small class="text-muted d-block">{{ item.updated_at.strftime('%Y-%m-%d') if item.updated_at else '' }}</small>
+                        <small class="text-muted"><i class="bi bi-eye me-1"></i>{{ item.view_count }}</small>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <nav class="mt-4">
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ pagination.prev_num }}&q={{ keyword }}&category_id={{ current_category_id }}">&laquo;</a>
+                </li>
+                {% for num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                {% if num %}
+                <li class="page-item {% if num == pagination.page %}active{% endif %}">
+                    <a class="page-link" href="?page={{ num }}&q={{ keyword }}&category_id={{ current_category_id }}">{{ num }}</a>
+                </li>
+                {% else %}
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+                {% endfor %}
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ pagination.next_num }}&q={{ keyword }}&category_id={{ current_category_id }}">&raquo;</a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-journal-bookmark display-1 d-block mb-3"></i>
+            <p>暂无知识条目</p>
+            <p class="small">前往<a href="{{ url_for('admin.dashboard') }}">管理后台</a>添加内容</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
