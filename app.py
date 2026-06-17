@@ -6,7 +6,7 @@ import hashlib
 import logging
 from flask import Flask
 from config import Config
-from models import db, User
+from models import db, User, init_fts
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -25,12 +25,31 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        _migrate_db()
+        init_fts()
         _ensure_admin_user()
 
     from scheduler import init_scheduler
     init_scheduler(app)
 
     return app
+
+
+def _migrate_db():
+    """处理数据库迁移（新增列）"""
+    import sqlite3, os
+    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'archive.db')
+    if not os.path.exists(db_path):
+        return
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(users)")
+    columns = [r[1] for r in cur.fetchall()]
+    if 'alert_keywords' not in columns:
+        cur.execute("ALTER TABLE users ADD COLUMN alert_keywords VARCHAR(1000) DEFAULT ''")
+        conn.commit()
+        logger.info('数据库迁移: 已添加 users.alert_keywords 列')
+    conn.close()
 
 
 def _ensure_admin_user():

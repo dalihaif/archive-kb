@@ -8,11 +8,18 @@
         <button id="btnCrawlAll" class="btn btn-sm" style="background-color: #D4A84B; color: #1A2A4A;" onclick="crawlAll()">
             <i class="bi bi-arrow-repeat me-1"></i>立即全量抓取
         </button>
+        <button class="btn btn-sm btn-outline-info ms-1" onclick="exportPolicies()">
+            <i class="bi bi-download me-1"></i>导出Excel
+        </button>
+        <button class="btn btn-sm btn-outline-secondary ms-1" onclick="backupDB()">
+            <i class="bi bi-cloud-download me-1"></i>备份
+        </button>
+        <button class="btn btn-sm btn-outline-danger ms-1" onclick="document.getElementById('restoreFile').click()">
+            <i class="bi bi-cloud-upload me-1"></i>恢复
+        </button>
+        <input type="file" id="restoreFile" accept=".db" style="display:none;" onchange="restoreDB(this)">
         <a href="{{ url_for('main.index') }}" class="btn btn-sm btn-outline-secondary ms-2">
             <i class="bi bi-eye me-1"></i>前台预览
-        </a>
-        <a href="{{ url_for('admin.logout') }}" class="btn btn-sm btn-outline-danger ms-2">
-            <i class="bi bi-box-arrow-right me-1"></i>退出
         </a>
     </div>
 </div>
@@ -72,6 +79,27 @@
                     <a href="{{ url_for('admin.knowledge_list') }}" class="btn btn-outline-success btn-sm text-start">
                         <i class="bi bi-book me-2"></i>管理知识库 ({{ knowledge_count }})
                     </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- 关键词订阅 -->
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-bell me-2" style="color: #D4A84B;"></i>关键词订阅</h6>
+                <button class="btn btn-sm btn-outline-primary" onclick="saveKeywords()"><i class="bi bi-check me-1"></i>保存</button>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <input class="form-control form-control-sm" id="alertKeywords"
+                           placeholder="关注关键词，逗号分隔。如: 电子病历,病案管理,归档,数字化">
+                </div>
+                <small class="text-muted">新政策标题命中关键词时，导航栏会显示红点通知。</small>
+                <div id="alertMatchResult" class="mt-2" style="display:none;">
+                    <div class="alert alert-success py-1 px-2 mb-1 small">
+                        <strong id="alertMatchCount">0</strong> 条今日新政策命中关键词:
+                    </div>
+                    <ul id="alertMatchList" class="list-unstyled small mb-0" style="max-height:150px;overflow-y:auto;"></ul>
                 </div>
             </div>
         </div>
@@ -147,6 +175,72 @@ function crawlAll() {
             btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>失败';
             btn.className = 'btn btn-sm btn-danger';
         });
+}
+
+function exportPolicies() {
+    var dateFrom = prompt('起始日期 (YYYY-MM-DD)，留空导出全部:', '');
+    var dateTo = prompt('截止日期 (YYYY-MM-DD)，留空导出全部:', '');
+    var url = '/admin/api/policies/export?'
+        + (dateFrom ? 'date_from=' + dateFrom + '&' : '')
+        + (dateTo ? 'date_to=' + dateTo + '&' : '');
+    window.open(url, '_blank');
+}
+
+function backupDB() {
+    window.open('/admin/api/backup', '_blank');
+}
+
+function restoreDB(input) {
+    if (!input.files.length) return;
+    if (!confirm('恢复数据库将覆盖当前所有数据！\n\n确定要用 ' + input.files[0].name + ' 恢复吗？\n\n当前数据库会自动备份到 archive.db.before_restore。')) {
+        input.value = '';
+        return;
+    }
+    var formData = new FormData();
+    formData.append('file', input.files[0]);
+    fetch('/admin/api/restore', {method: 'POST', body: formData})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            alert(d.message || '恢复完成');
+            if (d.success) location.reload();
+        })
+        .catch(function() { alert('恢复失败'); })
+        .finally(function() { input.value = ''; });
+}
+
+// 关键词订阅
+(function() {
+    fetch('/admin/api/alerts/keywords')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.keywords) document.getElementById('alertKeywords').value = d.keywords;
+        });
+
+    fetch('/admin/api/alerts/check')
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.count > 0) {
+                document.getElementById('alertMatchResult').style.display = '';
+                document.getElementById('alertMatchCount').textContent = d.count;
+                var list = document.getElementById('alertMatchList');
+                d.matched.forEach(function(m) {
+                    var li = document.createElement('li');
+                    li.innerHTML = '<a href="/policies/' + m.id + '" target="_blank">' + m.title + '</a> <span class="badge bg-warning text-dark">' + m.keyword + '</span>';
+                    list.appendChild(li);
+                });
+            }
+        });
+})();
+
+function saveKeywords() {
+    var kw = document.getElementById('alertKeywords').value;
+    fetch('/admin/api/alerts/keywords', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({keywords: kw})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function() { alert('关键词已保存'); location.reload(); });
 }
 </script>
 {% endblock %}

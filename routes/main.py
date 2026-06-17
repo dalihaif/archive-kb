@@ -3,8 +3,43 @@
 """
 from flask import Blueprint, render_template, request, jsonify
 from models import db, Policy, Category, KnowledgeItem, MonitorSource, MonitorLog
+import logging
+
+logger = logging.getLogger(__name__)
 
 main_bp = Blueprint('main', __name__)
+
+
+def _main_fts_search_policies(keyword):
+    """FTS5 全文搜索政策"""
+    try:
+        from sqlalchemy import text
+        safe_kw = keyword.replace('"', '').replace("'", '')
+        results = db.session.execute(
+            text("SELECT rowid FROM policies_fts WHERE policies_fts MATCH :q LIMIT 500"),
+            {"q": f'"{safe_kw}"'}
+        ).fetchall()
+        if results:
+            return [r[0] for r in results]
+    except Exception:
+        pass
+    return None
+
+
+def _main_fts_search_knowledge(keyword):
+    """FTS5 全文搜索知识库"""
+    try:
+        from sqlalchemy import text
+        safe_kw = keyword.replace('"', '').replace("'", '')
+        results = db.session.execute(
+            text("SELECT rowid FROM knowledge_fts WHERE knowledge_fts MATCH :q LIMIT 500"),
+            {"q": f'"{safe_kw}"'}
+        ).fetchall()
+        if results:
+            return [r[0] for r in results]
+    except Exception:
+        pass
+    return None
 
 
 @main_bp.route('/')
@@ -57,14 +92,18 @@ def policy_list():
             query = query.filter(Policy.source_id.in_(source_ids))
 
     if keyword:
-        query = query.filter(
-            db.or_(
-                Policy.title.contains(keyword),
-                Policy.summary.contains(keyword),
-                Policy.content.contains(keyword),
-                Policy.tags.contains(keyword)
+        fts_ids = _main_fts_search_policies(keyword)
+        if fts_ids:
+            query = query.filter(Policy.id.in_(fts_ids))
+        else:
+            query = query.filter(
+                db.or_(
+                    Policy.title.contains(keyword),
+                    Policy.summary.contains(keyword),
+                    Policy.content.contains(keyword),
+                    Policy.tags.contains(keyword)
+                )
             )
-        )
 
     query = query.order_by(Policy.is_pinned.desc(), Policy.created_at.desc())
     pagination = query.paginate(page=page, per_page=20, error_out=False)
@@ -91,6 +130,22 @@ def policy_detail(policy_id):
     return render_template('policy_detail.html', policy=policy)
 
 
+def _get_category_ids(cat_id):
+    """获取父分类及所有子分类的ID列表"""
+    cat_ids = [cat_id]
+    for child in Category.query.filter_by(parent_id=cat_id).all():
+        cat_ids.append(child.id)
+    return cat_ids
+
+
+def _get_category_total_count(cat):
+    """获取分类的条目总数（包含子分类）"""
+    if cat.children:
+        cat_ids = [cat.id] + [c.id for c in cat.children]
+        return KnowledgeItem.query.filter(KnowledgeItem.category_id.in_(cat_ids)).count()
+    return cat.knowledge_items.count()
+
+
 @main_bp.route('/knowledge')
 def knowledge_list():
     """知识库列表页"""
@@ -101,28 +156,40 @@ def knowledge_list():
     query = KnowledgeItem.query
 
     if category_id:
-        query = query.filter_by(category_id=category_id)
+        cat_ids = _get_category_ids(category_id)
+        query = query.filter(KnowledgeItem.category_id.in_(cat_ids))
 
     if keyword:
-        query = query.filter(
-            db.or_(
-                KnowledgeItem.title.contains(keyword),
-                KnowledgeItem.content.contains(keyword),
-                KnowledgeItem.tags.contains(keyword)
+        fts_ids = _main_fts_search_knowledge(keyword)
+        if fts_ids:
+            query = query.filter(KnowledgeItem.id.in_(fts_ids))
+        else:
+            query = query.filter(
+                db.or_(
+                    KnowledgeItem.title.contains(keyword),
+                    KnowledgeItem.content.contains(keyword),
+                    KnowledgeItem.tags.contains(keyword)
+                )
             )
-        )
 
     query = query.order_by(KnowledgeItem.is_pinned.desc(), KnowledgeItem.updated_at.desc())
     pagination = query.paginate(page=page, per_page=20, error_out=False)
 
     categories = Category.query.order_by(Category.sort_order).all()
+    total_all = KnowledgeItem.query.count()
+
+    cat_counts = {}
+    for c in categories:
+        cat_counts[c.id] = _get_category_total_count(c)
 
     return render_template('knowledge.html',
         items=pagination.items,
         pagination=pagination,
         categories=categories,
         current_category_id=category_id,
-        keyword=keyword)
+        keyword=keyword,
+        total_all=total_all,
+        cat_counts=cat_counts)
 
 
 @main_bp.route('/knowledge/<int:item_id>')

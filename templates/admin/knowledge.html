@@ -1,7 +1,11 @@
 {% extends "base.html" %}
 {% block title %}知识库管理 - 管理后台{% endblock %}
 {% block extra_head %}
-<style>.note-editor { background: white !important; }</style>
+<style>
+.note-editor { background: white !important; }
+.batch-bar { display: none; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 8px 16px; margin-bottom: 12px; }
+.batch-bar.show { display: flex; align-items: center; justify-content: space-between; }
+</style>
 {% endblock %}
 {% block content %}
 
@@ -10,10 +14,30 @@
 </nav>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h5><i class="bi bi-book me-2" style="color: #198754;"></i>知识库条目 ({{ pagination.total }})</h5>
-    <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" data-bs-toggle="modal" data-bs-target="#kiModal" onclick="resetKIForm()">
-        <i class="bi bi-plus-lg me-1"></i>新建条目
-    </button>
+    <h5><i class="bi bi-book me-2" style="color: #198754;"></i>知识库条目
+        <span class="text-muted small ms-2">
+            共 {{ total_all }} 条
+            {% if current_category_id or keyword %}| 当前筛选: {{ pagination.total }} 条{% endif %}
+        </span>
+    </h5>
+    <div>
+        <button class="btn btn-sm btn-outline-secondary me-1" onclick="toggleSelectAll()" title="全选/取消全选当前页">
+            <i class="bi bi-check2-square me-1"></i>选择
+        </button>
+        <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" data-bs-toggle="modal" data-bs-target="#kiModal" onclick="resetKIForm()">
+            <i class="bi bi-plus-lg me-1"></i>新建条目
+        </button>
+    </div>
+</div>
+
+<!-- 批量操作栏 -->
+<div class="batch-bar" id="batchBar">
+    <span><strong id="batchCount">0</strong> 条已选</span>
+    <div>
+        <button class="btn btn-sm btn-warning me-1" onclick="openBatchModal()"><i class="bi bi-pencil-square me-1"></i>批量修改</button>
+        <button class="btn btn-sm btn-outline-danger me-1" onclick="batchDelete()"><i class="bi bi-trash me-1"></i>批量删除</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">取消选择</button>
+    </div>
 </div>
 
 <div class="row g-3">
@@ -25,7 +49,7 @@
                 {% for cat in categories %}
                 {% if not cat.parent_id %}
                 <a href="?category_id={{ cat.id }}" class="list-group-item list-group-item-action border-0 small d-flex justify-content-between {% if current_category_id == cat.id %}active{% endif %}">
-                    {{ cat.name }} <span class="badge bg-light text-dark">{{ cat.knowledge_items.count() }}</span>
+                    {{ cat.name }} <span class="badge bg-light text-dark">{{ cat_counts.get(cat.id, 0) }}</span>
                 </a>
                 {% for sub in cat.children %}
                 <a href="?category_id={{ sub.id }}" class="list-group-item list-group-item-action border-0 small ps-4 {% if current_category_id == sub.id %}active{% endif %}">{{ sub.name }}</a>
@@ -49,11 +73,12 @@
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
                     <thead class="table-light">
-                        <tr><th>标题</th><th>分类</th><th>更新</th><th style="width:12%;">操作</th></tr>
+                        <tr><th style="width:40px;"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th><th>标题</th><th>分类</th><th>更新</th><th style="width:12%;">操作</th></tr>
                     </thead>
                     <tbody>
                         {% for item in items %}
                         <tr>
+                            <td><input type="checkbox" class="item-cb" value="{{ item.id }}" onchange="updateBatchBar()"></td>
                             <td><small class="fw-medium d-block">{{ item.title }}</small></td>
                             <td><small class="text-muted">{{ item.category.name if item.category else '' }}</small></td>
                             <td><small>{{ item.updated_at.strftime('%m-%d') if item.updated_at else '' }}</small></td>
@@ -63,7 +88,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-4">暂无知识条目</td></tr>
+                        <tr><td colspan="5" class="text-center text-muted py-4">暂无知识条目</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -80,7 +105,7 @@
     </div>
 </div>
 
-<!-- Modal -->
+<!-- 单条编辑 Modal -->
 <div class="modal fade" id="kiModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -133,14 +158,110 @@
     </div>
 </div>
 
-<script>
-var kiList = {{ items|map(attribute='id')|list|tojson }};
+<!-- 批量修改 Modal -->
+<div class="modal fade" id="batchModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: #ffc107;">
+                <h6 class="modal-title text-dark"><i class="bi bi-pencil-square me-1"></i>批量修改 - <span id="batchCount2">0</span> 条</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">仅修改你填写的字段，留空的字段保持不变。</p>
+                <div class="mb-2">
+                    <label class="form-label small">分类 <span class="text-muted">(留空=不修改)</span></label>
+                    <select class="form-select form-select-sm" id="batchCategory">
+                        <option value="">不修改</option>
+                        {% for cat in categories %}
+                        {% if cat.parent_id %}<option value="{{ cat.id }}">{{ cat.parent.name if cat.parent else '' }} › {{ cat.name }}</option>{% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">标签 <span class="text-muted">(留空=不修改)</span></label>
+                    <input class="form-control form-control-sm" id="batchTags" placeholder="批量设置标签...">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">来源 <span class="text-muted">(留空=不修改)</span></label>
+                    <input class="form-control form-control-sm" id="batchSource">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">标题前缀/后缀 <span class="text-muted">(将在此基础上批量修改标题)</span></label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text">前缀</span>
+                        <input class="form-control" id="batchTitlePrefix" placeholder="可选">
+                        <span class="input-group-text">后缀</span>
+                        <input class="form-control" id="batchTitleSuffix" placeholder="可选">
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">查找替换标题</label>
+                    <div class="input-group input-group-sm">
+                        <input class="form-control" id="batchTitleFind" placeholder="查找文本">
+                        <span class="input-group-text">→</span>
+                        <input class="form-control" id="batchTitleReplace" placeholder="替换为">
+                    </div>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="batchPinnedUnset">
+                    <label class="form-check-label small">置顶</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="batchReprocessCategory">
+                    <label class="form-check-label small">重新智能归类（根据标题关键词匹配）</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-sm btn-warning" onclick="saveBatch()">批量应用</button>
+            </div>
+        </div>
+    </div>
+</div>
 
+<script>
+// ========== 批量选择 ==========
+function getSelectedIds() {
+    var cbs = document.querySelectorAll('.item-cb:checked');
+    return Array.from(cbs).map(function(cb) { return parseInt(cb.value); });
+}
+
+function updateBatchBar() {
+    var ids = getSelectedIds();
+    document.getElementById('batchCount').textContent = ids.length;
+    document.getElementById('batchBar').classList.toggle('show', ids.length > 0);
+    document.getElementById('selectAll').checked = ids.length === document.querySelectorAll('.item-cb').length;
+}
+
+function toggleAll(cb) {
+    document.querySelectorAll('.item-cb').forEach(function(c) { c.checked = cb.checked; });
+    updateBatchBar();
+}
+
+function toggleSelectAll() {
+    var cbs = document.querySelectorAll('.item-cb');
+    var allChecked = Array.from(cbs).every(function(c) { return c.checked; });
+    cbs.forEach(function(c) { c.checked = !allChecked; });
+    updateBatchBar();
+}
+
+function clearSelection() {
+    document.querySelectorAll('.item-cb').forEach(function(c) { c.checked = false; });
+    updateBatchBar();
+}
+
+// ========== 单条编辑 (修复版) ==========
 function resetKIForm() {
     document.getElementById('kiId').value = '';
     document.getElementById('kiModalTitle').textContent = '新建知识条目';
-    ['kiTitle','kiTags','kiSource','kiSourceUrl','kiContent'].forEach(function(id) { document.getElementById(id).value = ''; });
+    ['kiTitle','kiTags','kiSource','kiSourceUrl'].forEach(function(id) { document.getElementById(id).value = ''; });
     document.getElementById('kiPinned').checked = false;
+    // Summernote 用 'code' 方法清空
+    if (typeof $('#kiContent').summernote === 'function') {
+        $('#kiContent').summernote('code', '');
+    } else {
+        document.getElementById('kiContent').value = '';
+    }
 }
 
 function editKI(id) {
@@ -149,14 +270,42 @@ function editKI(id) {
     document.getElementById('kiModalTitle').textContent = '编辑知识条目';
     var modal = new bootstrap.Modal(document.getElementById('kiModal'));
     modal.show();
+
+    // 加载现有数据回填表单
+    fetch('/admin/api/knowledge/' + id)
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res.success) {
+                var item = res.item;
+                document.getElementById('kiTitle').value = item.title || '';
+                document.getElementById('kiCategory').value = item.category_id || '';
+                document.getElementById('kiTags').value = item.tags || '';
+                document.getElementById('kiSource').value = item.source || '';
+                document.getElementById('kiSourceUrl').value = item.source_url || '';
+                document.getElementById('kiPinned').checked = item.is_pinned || false;
+                // Summernote 使用 code() 方法设置 HTML 内容
+                if (typeof $('#kiContent').summernote === 'function') {
+                    $('#kiContent').summernote('code', item.content || '');
+                } else {
+                    document.getElementById('kiContent').value = item.content || '';
+                }
+            }
+        });
 }
 
 function saveKI() {
     var id = document.getElementById('kiId').value;
+    // 从 Summernote 编辑器获取内容
+    var content = '';
+    if (typeof $('#kiContent').summernote === 'function') {
+        content = $('#kiContent').summernote('code');
+    } else {
+        content = document.getElementById('kiContent').value;
+    }
     var data = {
         category_id: parseInt(document.getElementById('kiCategory').value),
         title: document.getElementById('kiTitle').value,
-        content: document.getElementById('kiContent').value,
+        content: content,
         tags: document.getElementById('kiTags').value,
         source: document.getElementById('kiSource').value,
         source_url: document.getElementById('kiSourceUrl').value,
@@ -168,11 +317,197 @@ function saveKI() {
         .then(function() { location.reload(); });
 }
 
+// ========== 批量修改 ==========
+function openBatchModal() {
+    var ids = getSelectedIds();
+    if (ids.length === 0) { alert('请先选择要修改的条目'); return; }
+    document.getElementById('batchCount2').textContent = ids.length;
+    // 清空批量表单
+    document.getElementById('batchCategory').value = '';
+    document.getElementById('batchTags').value = '';
+    document.getElementById('batchSource').value = '';
+    document.getElementById('batchTitlePrefix').value = '';
+    document.getElementById('batchTitleSuffix').value = '';
+    document.getElementById('batchTitleFind').value = '';
+    document.getElementById('batchTitleReplace').value = '';
+    document.getElementById('batchPinnedUnset').checked = false;
+    document.getElementById('batchReprocessCategory').checked = false;
+    var modal = new bootstrap.Modal(document.getElementById('batchModal'));
+    modal.show();
+}
+
+function saveBatch() {
+    var ids = getSelectedIds();
+    if (ids.length === 0) return;
+
+    var updates = {};
+
+    // 分类
+    var catVal = document.getElementById('batchCategory').value;
+    if (catVal) updates.category_id = parseInt(catVal);
+
+    // 标签
+    var tagsVal = document.getElementById('batchTags').value.trim();
+    if (tagsVal) updates.tags = tagsVal;
+
+    // 来源
+    var srcVal = document.getElementById('batchSource').value.trim();
+    if (srcVal) updates.source = srcVal;
+
+    // 智能归类
+    if (document.getElementById('batchReprocessCategory').checked) {
+        // 需要先获取每条数据的标题，然后逐条建议
+        reprocessCategories(ids);
+        return;
+    }
+
+    // 标题批量处理
+    var prefix = document.getElementById('batchTitlePrefix').value.trim();
+    var suffix = document.getElementById('batchTitleSuffix').value.trim();
+    var findText = document.getElementById('batchTitleFind').value;
+    var replaceText = document.getElementById('batchTitleReplace').value;
+    if (prefix || suffix || findText) {
+        doBatchTitleUpdate(ids, prefix, suffix, findText, replaceText, updates);
+        return;
+    }
+
+    // 置顶
+    if (document.getElementById('batchPinnedUnset').checked) {
+        updates.is_pinned = true;
+    }
+
+    // 如果没有任何要修改的字段
+    if (Object.keys(updates).length === 0) {
+        alert('请至少填写一个要修改的字段');
+        return;
+    }
+
+    doBatchUpdate(ids, updates);
+}
+
+function doBatchUpdate(ids, updates) {
+    fetch('/admin/api/knowledge/batch', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids, updates: updates})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (res.success) {
+            alert('成功修改 ' + res.updated + ' 条记录');
+            location.reload();
+        } else {
+            alert('修改失败: ' + (res.error || '未知错误'));
+        }
+    });
+}
+
+// 批量修改标题（需先获取原标题再拼接/替换）
+function doBatchTitleUpdate(ids, prefix, suffix, findText, replaceText, baseUpdates) {
+    // 先获取所有要修改的条目标题
+    var fetches = ids.map(function(id) {
+        return fetch('/admin/api/knowledge/' + id).then(function(r) { return r.json(); });
+    });
+
+    Promise.all(fetches).then(function(results) {
+        var titleUpdates = ids.map(function(id, i) {
+            var oldTitle = results[i].success ? results[i].item.title : '';
+            var newTitle = oldTitle;
+            if (findText) {
+                newTitle = newTitle.split(findText).join(replaceText);
+            }
+            if (prefix) newTitle = prefix + newTitle;
+            if (suffix) newTitle = newTitle + suffix;
+            return {id: id, title: newTitle};
+        });
+
+        // 逐条更新标题
+        var updatePromises = titleUpdates.map(function(tu) {
+            return fetch('/admin/api/knowledge/' + tu.id, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({title: tu.title})
+            }).then(function(r) { return r.json(); });
+        });
+
+        Promise.all(updatePromises).then(function() {
+            // 如果有其他字段更新，也一起执行
+            if (Object.keys(baseUpdates).length > 0) {
+                doBatchUpdate(ids, baseUpdates);
+            } else {
+                alert('成功修改 ' + ids.length + ' 条标题');
+                location.reload();
+            }
+        });
+    });
+}
+
+// 智能重新归类
+function reprocessCategories(ids) {
+    fetch('/admin/api/knowledge/batch-suggest', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (res.success && res.suggestions) {
+            var updatePromises = [];
+            Object.keys(res.suggestions).forEach(function(kid) {
+                var s = res.suggestions[kid];
+                updatePromises.push(
+                    fetch('/admin/api/knowledge/' + kid, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({category_id: s.category_id})
+                    }).then(function(r) { return r.json(); })
+                );
+            });
+            return Promise.all(updatePromises);
+        } else {
+            throw new Error('无法获取分类建议');
+        }
+    })
+    .then(function() {
+        alert('智能归类完成');
+        location.reload();
+    })
+    .catch(function(err) {
+        alert('智能归类失败: ' + err.message);
+    });
+}
+
+// ========== 批量删除 ==========
+function batchDelete() {
+    var ids = getSelectedIds();
+    if (ids.length === 0) return;
+    if (!confirm('确定删除选中的 ' + ids.length + ' 条记录？此操作不可撤销！')) return;
+    var deletePromises = ids.map(function(id) {
+        return fetch('/admin/api/knowledge/' + id, {method: 'DELETE'}).then(function(r) { return r.json(); });
+    });
+    Promise.all(deletePromises).then(function() {
+        location.reload();
+    });
+}
+
+// ========== 单条删除 ==========
 function deleteKI(id) {
     if (!confirm('确定删除？')) return;
     fetch('/admin/api/knowledge/' + id, {method: 'DELETE'}).then(function() { location.reload(); });
 }
 
-$(function() { $('#kiContent').summernote({ height: 300, placeholder: '编写知识内容...', toolbar: [['style',['bold','italic','underline']],['para',['ul','ol','paragraph']],['insert',['link','picture']],['view',['codeview']]] }); });
+// ========== 初始化 Summernote ==========
+$(function() {
+    $('#kiContent').summernote({
+        height: 300,
+        placeholder: '编写知识内容...',
+        toolbar: [
+            ['style',['bold','italic','underline']],
+            ['para',['ul','ol','paragraph']],
+            ['insert',['link','picture']],
+            ['view',['codeview']]
+        ]
+    });
+});
 </script>
 {% endblock %}

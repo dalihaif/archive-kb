@@ -8,9 +8,21 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h5><i class="bi bi-newspaper me-2" style="color: #D4A84B;"></i>政策条目管理 ({{ pagination.total }})</h5>
-    <button class="btn btn-sm btn-danger" onclick="batchDelete()" id="btnBatchDel" disabled>
-        <i class="bi bi-trash me-1"></i>批量删除
-    </button>
+    <div>
+        <span id="batchInfo" class="small text-muted me-2" style="display:none;">已选 <strong id="batchCount">0</strong> 条</span>
+        <button class="btn btn-sm btn-outline-warning me-1" onclick="openBatchEditModal()" id="btnBatchEdit" disabled>
+            <i class="bi bi-pencil-square me-1"></i>批量修改
+        </button>
+        <button class="btn btn-sm btn-outline-success me-1" onclick="batchToKnowledge()" id="btnBatchTransfer" disabled>
+            <i class="bi bi-arrow-right-circle me-1"></i>批量转入知识库
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="batchDelete()" id="btnBatchDel" disabled>
+            <i class="bi bi-trash me-1"></i>批量删除
+        </button>
+        <button class="btn btn-sm btn-outline-info ms-1" onclick="exportPolicies()">
+            <i class="bi bi-download me-1"></i>导出
+        </button>
+    </div>
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
@@ -37,18 +49,18 @@
         <table class="table table-hover mb-0">
             <thead class="table-light">
                 <tr>
-                    <th style="width:3%;"><input type="checkbox" onchange="toggleAll(this)"></th>
-                    <th style="width:40%;">标题</th>
+                    <th style="width:3%;"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+                    <th style="width:38%;">标题</th>
                     <th>来源</th>
                     <th>分类</th>
                     <th>日期</th>
-                    <th style="width:10%;">操作</th>
+                    <th style="width:18%;">操作</th>
                 </tr>
             </thead>
             <tbody>
                 {% for p in policies %}
                 <tr>
-                    <td><input type="checkbox" class="policy-check" value="{{ p.id }}"></td>
+                    <td><input type="checkbox" class="policy-check" value="{{ p.id }}" onchange="updateBtns()"></td>
                     <td>
                         <small class="fw-medium d-block">{{ p.title }}</small>
                         <small class="text-muted">{{ p.summary[:60] if p.summary else '' }}</small>
@@ -57,7 +69,15 @@
                     <td><span class="badge bg-light text-dark">{{ p.file_type or '-' }}</span></td>
                     <td><small>{{ p.pub_date or p.created_at.strftime('%Y-%m-%d') if p.created_at else '' }}</small></td>
                     <td>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deletePolicy({{ p.id }})" title="删除"><i class="bi bi-trash"></i></button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="editPolicy({{ p.id }})" title="编辑">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="singleToKnowledge({{ p.id }}, '{{ p.title|e|replace("'", "\\'") }}')" title="转入知识库">
+                            <i class="bi bi-arrow-right-circle"></i>
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deletePolicy({{ p.id }})" title="删除">
+                            <i class="bi bi-trash"></i>
+                        </button>
                     </td>
                 </tr>
                 {% else %}
@@ -78,25 +98,487 @@
 </ul></nav>
 {% endif %}
 
+<!-- ===== 单条编辑 Modal ===== -->
+<div class="modal fade" id="policyEditModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: #1A2A4A; color: white;">
+                <h6 class="modal-title"><span id="editPolicyModalTitle">编辑政策</span></h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editPolicyId">
+                <div class="mb-2">
+                    <label class="form-label small">标题</label>
+                    <input class="form-control form-control-sm" id="editPolicyTitle">
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">文件类型</label>
+                        <input class="form-control form-control-sm" id="editPolicyFileType" placeholder="通知/公告/法规...">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">标签(逗号分隔)</label>
+                        <input class="form-control form-control-sm" id="editPolicyTags">
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">摘要</label>
+                    <textarea class="form-control form-control-sm" id="editPolicySummary" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" onclick="saveEditPolicy()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 批量修改 Modal ===== -->
+<div class="modal fade" id="batchEditModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: #ffc107;">
+                <h6 class="modal-title text-dark"><i class="bi bi-pencil-square me-1"></i>批量修改 - <span id="batchCount2">0</span> 条</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-muted mb-3">仅修改你填写的字段，留空的字段保持不变。</p>
+                <div class="mb-2">
+                    <label class="form-label small">文件类型 <span class="text-muted">(留空=不修改)</span></label>
+                    <input class="form-control form-control-sm" id="batchFileType" placeholder="通知/公告/法规/标准/其他">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">标签 <span class="text-muted">(留空=不修改)</span></label>
+                    <input class="form-control form-control-sm" id="batchTags" placeholder="批量设置标签...">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">标题查找替换</label>
+                    <div class="input-group input-group-sm">
+                        <input class="form-control" id="batchTitleFind" placeholder="查找文本">
+                        <span class="input-group-text">→</span>
+                        <input class="form-control" id="batchTitleReplace" placeholder="替换为">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-sm btn-warning" onclick="saveBatchEdit()">批量应用</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 转入知识库弹窗 ===== -->
+<div class="modal fade" id="transferModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: #1A2A4A; color: #fff;">
+                <h6 class="modal-title"><i class="bi bi-arrow-right-circle me-2"></i><span id="modalTitle">转入知识库</span></h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 单条模式 -->
+                <div id="singleMode">
+                    <div class="alert alert-info py-2 mb-3" id="singlePolicyTitle" style="font-size: 0.9rem;"></div>
+                    <div id="singleSuggestions" class="mb-3"></div>
+                </div>
+                <!-- 批量模式 -->
+                <div id="batchMode" style="display:none;">
+                    <div class="alert alert-info py-2 mb-3" style="font-size: 0.9rem;">
+                        已选择 <strong id="batchTransferCount">0</strong> 条政策，
+                        下方显示按热门度排序的建议分类，也可手动选择。
+                    </div>
+                    <div class="mb-2 small text-muted">
+                        <i class="bi bi-info-circle me-1"></i>批量转入：所有选中条目将转入同一个分类
+                    </div>
+                    <div id="batchSuggestions" class="mb-3"></div>
+                </div>
+                <!-- 手动选择分类 -->
+                <label class="form-label fw-medium small">选择目标分类</label>
+                <select class="form-select" id="categorySelect">
+                    <option value="">-- 请选择分类 --</option>
+                    {% for cat in all_categories %}
+                    {% if not cat.parent_id %}
+                    <optgroup label="{{ cat.name }}">
+                        <option value="{{ cat.id }}">{{ cat.name }}</option>
+                        {% for child in all_categories %}
+                        {% if child.parent_id == cat.id %}
+                        <option value="{{ child.id }}">&nbsp;&nbsp;└ {{ child.name }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </optgroup>
+                    {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-sm btn-success" onclick="confirmTransfer()">
+                    <i class="bi bi-check-lg me-1"></i>确认转入
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
+// ===== 工具函数 =====
+function getCheckedIds() {
+    return Array.from(document.querySelectorAll('.policy-check:checked')).map(function(c) { return parseInt(c.value); });
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ===== 复选框联动 =====
 function toggleAll(cb) {
     document.querySelectorAll('.policy-check').forEach(function(c) { c.checked = cb.checked; });
-    updateDelBtn();
+    updateBtns();
 }
-document.addEventListener('click', function(e) { if (e.target.classList.contains('policy-check')) updateDelBtn(); });
-function updateDelBtn() {
-    document.getElementById('btnBatchDel').disabled = !document.querySelector('.policy-check:checked');
+
+function updateBtns() {
+    var ids = getCheckedIds();
+    var hasChecked = ids.length > 0;
+    document.getElementById('btnBatchDel').disabled = !hasChecked;
+    document.getElementById('btnBatchTransfer').disabled = !hasChecked;
+    document.getElementById('btnBatchEdit').disabled = !hasChecked;
+    document.getElementById('batchCount').textContent = ids.length;
+    document.getElementById('batchInfo').style.display = hasChecked ? 'inline' : 'none';
+    // 更新全选状态
+    var allCbs = document.querySelectorAll('.policy-check');
+    document.getElementById('selectAll').checked = ids.length > 0 && ids.length === allCbs.length;
 }
+
+// ===== 单条编辑 =====
+function editPolicy(id) {
+    fetch('/admin/api/policies/' + id)
+        .then(function(r) {
+            if (!r.ok) throw new Error('获取失败');
+            return r.json();
+        })
+        .then(function(data) {
+            if (data.success && data.policy) {
+                document.getElementById('editPolicyId').value = data.policy.id || id;
+                document.getElementById('editPolicyTitle').value = data.policy.title || '';
+                document.getElementById('editPolicyFileType').value = data.policy.file_type || '';
+                document.getElementById('editPolicyTags').value = data.policy.tags || '';
+                document.getElementById('editPolicySummary').value = data.policy.summary || '';
+                new bootstrap.Modal(document.getElementById('policyEditModal')).show();
+            } else {
+                alert('获取政策详情失败');
+            }
+        })
+        .catch(function() { alert('获取政策详情失败'); });
+}
+
+function saveEditPolicy() {
+    var id = document.getElementById('editPolicyId').value;
+    var data = {
+        title: document.getElementById('editPolicyTitle').value,
+        file_type: document.getElementById('editPolicyFileType').value,
+        tags: document.getElementById('editPolicyTags').value,
+        summary: document.getElementById('editPolicySummary').value
+    };
+    fetch('/admin/api/policies/' + id, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (res.success) {
+            bootstrap.Modal.getInstance(document.getElementById('policyEditModal')).hide();
+            location.reload();
+        } else {
+            alert('保存失败');
+        }
+    })
+    .catch(function() { alert('保存失败'); });
+}
+
+// ===== 删除 =====
 function deletePolicy(id) {
     if (!confirm('确定删除？')) return;
-    fetch('/admin/api/policies/' + id, {method: 'DELETE'}).then(function() { location.reload(); });
+    fetch('/admin/api/policies/' + id, {method: 'DELETE'})
+        .then(function() { location.reload(); })
+        .catch(function() { alert('删除失败'); });
 }
+
 function batchDelete() {
-    var ids = Array.from(document.querySelectorAll('.policy-check:checked')).map(function(c) { return parseInt(c.value); });
+    var ids = getCheckedIds();
+    if (!ids.length) { alert('请先选择要删除的政策'); return; }
+    if (!confirm('确定删除 ' + ids.length + ' 条政策？此操作不可撤销！')) return;
+    fetch('/admin/api/policies/batch-delete', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (res.success) { location.reload(); }
+        else { alert('删除失败: ' + (res.error || '未知错误')); }
+    })
+    .catch(function() { alert('删除请求失败'); });
+}
+
+// ===== 批量修改 =====
+function openBatchEditModal() {
+    var ids = getCheckedIds();
+    if (!ids.length) { alert('请先选择要修改的政策'); return; }
+    document.getElementById('batchCount2').textContent = ids.length;
+    document.getElementById('batchFileType').value = '';
+    document.getElementById('batchTags').value = '';
+    document.getElementById('batchTitleFind').value = '';
+    document.getElementById('batchTitleReplace').value = '';
+    new bootstrap.Modal(document.getElementById('batchEditModal')).show();
+}
+
+function saveBatchEdit() {
+    var ids = getCheckedIds();
     if (!ids.length) return;
-    if (!confirm('确定删除 ' + ids.length + ' 条？')) return;
-    fetch('/admin/api/policies/batch-delete', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ids: ids})})
-        .then(function() { location.reload(); });
+
+    var fileType = document.getElementById('batchFileType').value.trim();
+    var tags = document.getElementById('batchTags').value.trim();
+    var findText = document.getElementById('batchTitleFind').value;
+    var replaceText = document.getElementById('batchTitleReplace').value;
+
+    var updates = {};
+    if (fileType) updates.file_type = fileType;
+    if (tags) updates.tags = tags;
+
+    // 如果没有标题查找替换，直接批量更新
+    if (!findText) {
+        if (Object.keys(updates).length === 0) {
+            alert('请至少填写一个要修改的字段');
+            return;
+        }
+        doPolicyBatchUpdate(ids, updates);
+        return;
+    }
+
+    // 有标题查找替换：需要先获取每个条目的标题
+    doPolicyBatchTitleUpdate(ids, findText, replaceText, updates);
+}
+
+function doPolicyBatchUpdate(ids, updates) {
+    fetch('/admin/api/policies/batch', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids, updates: updates})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(res) {
+        if (res.success) {
+            bootstrap.Modal.getInstance(document.getElementById('batchEditModal')).hide();
+            alert('成功修改 ' + res.updated + ' 条记录');
+            location.reload();
+        } else {
+            alert('修改失败: ' + (res.error || '未知错误'));
+        }
+    })
+    .catch(function() { alert('修改请求失败'); });
+}
+
+function doPolicyBatchTitleUpdate(ids, findText, replaceText, baseUpdates) {
+    // 逐条获取标题并修改
+    var fetches = ids.map(function(id) {
+        return fetch('/admin/api/policies/' + id).then(function(r) { return r.json(); });
+    });
+
+    Promise.all(fetches).then(function(results) {
+        var updatePromises = [];
+        results.forEach(function(res, i) {
+            if (res.success && res.policy) {
+                var oldTitle = res.policy.title || '';
+                var newTitle = oldTitle.split(findText).join(replaceText);
+                if (newTitle !== oldTitle) {
+                    updatePromises.push(
+                        fetch('/admin/api/policies/' + ids[i], {
+                            method: 'PUT', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({title: newTitle})
+                        }).then(function(r) { return r.json(); })
+                    );
+                }
+            }
+        });
+
+        return Promise.all(updatePromises);
+    }).then(function() {
+        // 执行其他字段的批量更新
+        if (Object.keys(baseUpdates).length > 0) {
+            doPolicyBatchUpdate(ids, baseUpdates);
+        } else {
+            bootstrap.Modal.getInstance(document.getElementById('batchEditModal')).hide();
+            alert('成功修改 ' + ids.length + ' 条标题');
+            location.reload();
+        }
+    }).catch(function() {
+        alert('部分标题修改失败');
+    });
+}
+
+// ===== 单条转入知识库 =====
+function singleToKnowledge(id, title) {
+    transferMode = 'single';
+    currentPolicyId = id;
+    currentPolicyTitle = title;
+
+    document.getElementById('modalTitle').textContent = '转入知识库 - 单条';
+    document.getElementById('singleMode').style.display = 'block';
+    document.getElementById('batchMode').style.display = 'none';
+    document.getElementById('singlePolicyTitle').innerHTML = '<strong>政策标题：</strong>' + escapeHtml(title);
+    document.getElementById('categorySelect').value = '';
+    document.getElementById('singleSuggestions').innerHTML = '<div class="text-muted small">正在智能分析...</div>';
+
+    // 获取建议
+    fetch('/admin/api/policies/' + id + '/suggest-category')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success && data.suggestions.length > 0) {
+                renderSuggestions('singleSuggestions', data.suggestions, true);
+            } else {
+                document.getElementById('singleSuggestions').innerHTML =
+                    '<div class="text-muted small">未找到匹配建议，请手动选择分类</div>';
+            }
+        })
+        .catch(function() {
+            document.getElementById('singleSuggestions').innerHTML =
+                '<div class="text-muted small">建议获取失败，请手动选择分类</div>';
+        });
+
+    new bootstrap.Modal(document.getElementById('transferModal')).show();
+}
+
+// ===== 批量转入知识库 =====
+function batchToKnowledge() {
+    var checked = document.querySelectorAll('.policy-check:checked');
+    if (!checked.length) { alert('请先选择要转入的政策'); return; }
+
+    transferMode = 'batch';
+    currentPolicyId = null;
+    currentPolicyTitle = '';
+
+    document.getElementById('modalTitle').textContent = '转入知识库 - 批量';
+    document.getElementById('singleMode').style.display = 'none';
+    document.getElementById('batchMode').style.display = 'block';
+    document.getElementById('batchTransferCount').textContent = checked.length;
+    document.getElementById('categorySelect').value = '';
+    document.getElementById('batchSuggestions').innerHTML = '<div class="text-muted small">正在智能分析 ' + checked.length + ' 条...</div>';
+
+    var ids = Array.from(checked).map(function(c) { return parseInt(c.value); });
+    fetch('/admin/api/policies/batch-suggest', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success && data.ranked_suggestions.length > 0) {
+            renderSuggestions('batchSuggestions', data.ranked_suggestions, false);
+        } else {
+            document.getElementById('batchSuggestions').innerHTML =
+                '<div class="text-muted small">未找到匹配建议，请手动选择分类</div>';
+        }
+    })
+    .catch(function() {
+        document.getElementById('batchSuggestions').innerHTML =
+            '<div class="text-muted small">建议获取失败，请手动选择分类</div>';
+    });
+
+    new bootstrap.Modal(document.getElementById('transferModal')).show();
+}
+
+// ===== 渲染建议列表 =====
+function renderSuggestions(containerId, suggestions, isSingle) {
+    var html = '<div class="d-flex flex-wrap gap-2">';
+    suggestions.forEach(function(s, i) {
+        var badgeClass = i === 0 ? 'btn-success' : 'btn-outline-success';
+        var label = s.full_path || s.name;
+        if (s.score !== undefined) {
+            label += ' <small>(' + s.score + '分)</small>';
+        }
+        if (s.count !== undefined) {
+            label += ' <small class="badge bg-warning text-dark ms-1">' + s.count + '条匹配</small>';
+        }
+        html += '<button type="button" class="btn btn-sm ' + badgeClass + '" onclick="selectSuggestion(' + s.category_id + ')" title="点击选择此分类">';
+        html += '<i class="bi bi-lightbulb me-1"></i>' + label;
+        html += '</button>';
+    });
+    html += '</div>';
+    document.getElementById(containerId).innerHTML = html;
+}
+
+// ===== 点击建议选择分类 =====
+function selectSuggestion(catId) {
+    document.getElementById('categorySelect').value = catId;
+}
+
+// ===== 确认转入 =====
+function confirmTransfer() {
+    var categoryId = document.getElementById('categorySelect').value;
+    if (!categoryId) {
+        alert('请选择目标分类');
+        return;
+    }
+
+    var btn = document.querySelector('#transferModal .btn-success');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>转入中...';
+
+    if (transferMode === 'single') {
+        // 单条转入
+        fetch('/admin/api/policies/to-knowledge', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({policy_id: currentPolicyId, category_id: parseInt(categoryId)})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('transferModal')).hide();
+                location.reload();
+            } else {
+                alert('转入失败');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>确认转入';
+            }
+        });
+    } else {
+        // 批量转入
+        var checked = document.querySelectorAll('.policy-check:checked');
+        var items = Array.from(checked).map(function(c) {
+            return {policy_id: parseInt(c.value), category_id: parseInt(categoryId)};
+        });
+        fetch('/admin/api/policies/batch-to-knowledge', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({items: items})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                bootstrap.Modal.getInstance(document.getElementById('transferModal')).hide();
+                alert('成功转入 ' + data.count + ' 条到知识库！');
+                location.reload();
+            } else {
+                alert('转入失败');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>确认转入';
+            }
+        });
+    }
+}
+
+function exportPolicies() {
+    var kw = document.querySelector('input[name="q"]');
+    var cat = document.querySelector('select[name="category"]');
+    var dateFrom = prompt('起始日期 (YYYY-MM-DD)，留空导出全部:', '');
+    var dateTo = prompt('截止日期 (YYYY-MM-DD)，留空导出全部:', '');
+    var url = '/admin/api/policies/export?'
+        + (dateFrom ? 'date_from=' + dateFrom + '&' : '')
+        + (dateTo ? 'date_to=' + dateTo + '&' : '')
+        + (kw && kw.value ? 'q=' + encodeURIComponent(kw.value) + '&' : '')
+        + (cat && cat.value ? 'category=' + encodeURIComponent(cat.value) + '&' : '');
+    window.open(url, '_blank');
 }
 </script>
 {% endblock %}

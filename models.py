@@ -116,5 +116,70 @@ class User(db.Model):
     username = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
+    alert_keywords = db.Column(db.String(1000), default='', comment='关注关键词(逗号分隔)')
     last_login = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+def init_fts():
+    """初始化全文搜索索引"""
+    from sqlalchemy import text
+    db.session.execute(text("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS policies_fts
+        USING fts5(title, content, summary, tags, content=policies, content_rowid=id);
+    """))
+    # 重建触发器：保持 FTS 索引与 policies 表同步
+    db.session.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS policies_ai AFTER INSERT ON policies BEGIN
+            INSERT INTO policies_fts(rowid, title, content, summary, tags)
+            VALUES (new.id, new.title, new.content, new.summary, new.tags);
+        END;
+    """))
+    db.session.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS policies_ad AFTER DELETE ON policies BEGIN
+            INSERT INTO policies_fts(policies_fts, rowid, title, content, summary, tags)
+            VALUES ('delete', old.id, old.title, old.content, old.summary, old.tags);
+        END;
+    """))
+    db.session.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS policies_au AFTER UPDATE ON policies BEGIN
+            INSERT INTO policies_fts(policies_fts, rowid, title, content, summary, tags)
+            VALUES ('delete', old.id, old.title, old.content, old.summary, old.tags);
+            INSERT INTO policies_fts(rowid, title, content, summary, tags)
+            VALUES (new.id, new.title, new.content, new.summary, new.tags);
+        END;
+    """))
+    db.session.execute(text("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts
+        USING fts5(title, content, tags, content=knowledge_items, content_rowid=id);
+    """))
+    db.session.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS knowledge_ai AFTER INSERT ON knowledge_items BEGIN
+            INSERT INTO knowledge_fts(rowid, title, content, tags)
+            VALUES (new.id, new.title, new.content, new.tags);
+        END;
+    """))
+    db.session.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS knowledge_ad AFTER DELETE ON knowledge_items BEGIN
+            INSERT INTO knowledge_fts(knowledge_fts, rowid, title, content, tags)
+            VALUES ('delete', old.id, old.title, old.content, old.tags);
+        END;
+    """))
+    db.session.execute(text("""
+        CREATE TRIGGER IF NOT EXISTS knowledge_au AFTER UPDATE ON knowledge_items BEGIN
+            INSERT INTO knowledge_fts(knowledge_fts, rowid, title, content, tags)
+            VALUES ('delete', old.id, old.title, old.content, old.tags);
+            INSERT INTO knowledge_fts(rowid, title, content, tags)
+            VALUES (new.id, new.title, new.content, new.tags);
+        END;
+    """))
+    # 填充已有数据
+    db.session.execute(text("""
+        INSERT OR IGNORE INTO policies_fts(rowid, title, content, summary, tags)
+        SELECT id, title, content, summary, tags FROM policies;
+    """))
+    db.session.execute(text("""
+        INSERT OR IGNORE INTO knowledge_fts(rowid, title, content, tags)
+        SELECT id, title, content, tags FROM knowledge_items;
+    """))
+    db.session.commit()
