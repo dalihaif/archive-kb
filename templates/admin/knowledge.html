@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block title %}知识库管理 - 管理后台{% endblock %}
+{% block extra_head %}
+<style>.note-editor { background: white !important; }</style>
+{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb"><li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">管理后台</a></li><li class="breadcrumb-item active">知识库管理</li></ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5><i class="bi bi-book me-2" style="color: #198754;"></i>知识库条目 ({{ pagination.total }})</h5>
+    <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" data-bs-toggle="modal" data-bs-target="#kiModal" onclick="resetKIForm()">
+        <i class="bi bi-plus-lg me-1"></i>新建条目
+    </button>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom"><h6 class="mb-0 small">分类</h6></div>
+            <div class="list-group list-group-flush" style="max-height: 500px; overflow-y:auto;">
+                <a href="{{ url_for('admin.knowledge_list') }}" class="list-group-item list-group-item-action border-0 small {% if not current_category_id %}active{% endif %}">全部</a>
+                {% for cat in categories %}
+                {% if not cat.parent_id %}
+                <a href="?category_id={{ cat.id }}" class="list-group-item list-group-item-action border-0 small d-flex justify-content-between {% if current_category_id == cat.id %}active{% endif %}">
+                    {{ cat.name }} <span class="badge bg-light text-dark">{{ cat.knowledge_items.count() }}</span>
+                </a>
+                {% for sub in cat.children %}
+                <a href="?category_id={{ sub.id }}" class="list-group-item list-group-item-action border-0 small ps-4 {% if current_category_id == sub.id %}active{% endif %}">{{ sub.name }}</a>
+                {% endfor %}
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-9">
+        <form class="mb-2" method="get">
+            <div class="input-group input-group-sm">
+                <input type="hidden" name="category_id" value="{{ current_category_id }}">
+                <input class="form-control" name="q" value="{{ keyword }}" placeholder="搜索...">
+                <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-search"></i></button>
+            </div>
+        </form>
+
+        <div class="card border-0 shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr><th>标题</th><th>分类</th><th>更新</th><th style="width:12%;">操作</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td><small class="fw-medium d-block">{{ item.title }}</small></td>
+                            <td><small class="text-muted">{{ item.category.name if item.category else '' }}</small></td>
+                            <td><small>{{ item.updated_at.strftime('%m-%d') if item.updated_at else '' }}</small></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-primary" onclick="editKI({{ item.id }})"><i class="bi bi-pencil"></i></button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteKI({{ item.id }})"><i class="bi bi-trash"></i></button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-4">暂无知识条目</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {% if pagination.pages > 1 %}
+        <nav class="mt-2"><ul class="pagination pagination-sm justify-content-center">
+            {% for num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if num %}<li class="page-item {% if num == pagination.page %}active{% endif %}"><a class="page-link" href="?page={{ num }}&category_id={{ current_category_id }}&q={{ keyword }}">{{ num }}</a></li>{% endif %}
+            {% endfor %}
+        </ul></nav>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="kiModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: #1A2A4A; color: white;">
+                <h6 class="modal-title"><span id="kiModalTitle">新建知识条目</span></h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="kiId">
+                <div class="mb-2">
+                    <label class="form-label small">标题</label>
+                    <input class="form-control form-control-sm" id="kiTitle">
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">分类</label>
+                        <select class="form-select form-select-sm" id="kiCategory">
+                            {% for cat in categories %}
+                            {% if cat.parent_id %}<option value="{{ cat.id }}">{{ cat.parent.name if cat.parent else '' }} › {{ cat.name }}</option>{% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">标签(逗号分隔)</label>
+                        <input class="form-control form-control-sm" id="kiTags" placeholder="档案法规, 电子档案...">
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">来源</label>
+                    <input class="form-control form-control-sm" id="kiSource">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">来源链接</label>
+                    <input class="form-control form-control-sm" id="kiSourceUrl">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">内容</label>
+                    <textarea class="form-control" id="kiContent" rows="8"></textarea>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="kiPinned">
+                    <label class="form-check-label small">置顶</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" onclick="saveKI()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var kiList = {{ items|map(attribute='id')|list|tojson }};
+
+function resetKIForm() {
+    document.getElementById('kiId').value = '';
+    document.getElementById('kiModalTitle').textContent = '新建知识条目';
+    ['kiTitle','kiTags','kiSource','kiSourceUrl','kiContent'].forEach(function(id) { document.getElementById(id).value = ''; });
+    document.getElementById('kiPinned').checked = false;
+}
+
+function editKI(id) {
+    resetKIForm();
+    document.getElementById('kiId').value = id;
+    document.getElementById('kiModalTitle').textContent = '编辑知识条目';
+    var modal = new bootstrap.Modal(document.getElementById('kiModal'));
+    modal.show();
+}
+
+function saveKI() {
+    var id = document.getElementById('kiId').value;
+    var data = {
+        category_id: parseInt(document.getElementById('kiCategory').value),
+        title: document.getElementById('kiTitle').value,
+        content: document.getElementById('kiContent').value,
+        tags: document.getElementById('kiTags').value,
+        source: document.getElementById('kiSource').value,
+        source_url: document.getElementById('kiSourceUrl').value,
+        is_pinned: document.getElementById('kiPinned').checked
+    };
+    var url = id ? '/admin/api/knowledge/' + id : '/admin/api/knowledge';
+    fetch(url, {method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)})
+        .then(function(r) { return r.json(); })
+        .then(function() { location.reload(); });
+}
+
+function deleteKI(id) {
+    if (!confirm('确定删除？')) return;
+    fetch('/admin/api/knowledge/' + id, {method: 'DELETE'}).then(function() { location.reload(); });
+}
+
+$(function() { $('#kiContent').summernote({ height: 300, placeholder: '编写知识内容...', toolbar: [['style',['bold','italic','underline']],['para',['ul','ol','paragraph']],['insert',['link','picture']],['view',['codeview']]] }); });
+</script>
+{% endblock %}
