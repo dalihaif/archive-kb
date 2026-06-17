@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}分类管理 - 管理后台{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb"><li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">管理后台</a></li><li class="breadcrumb-item active">分类管理</li></ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5><i class="bi bi-folder me-2" style="color: #D4A84B;"></i>知识库分类体系</h5>
+    <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" data-bs-toggle="modal" data-bs-target="#catModal" onclick="resetCatForm()">
+        <i class="bi bi-plus-lg me-1"></i>新建分类
+    </button>
+</div>
+
+<div class="row g-4">
+    {% for cat in categories %}
+    {% if not cat.parent_id %}
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi {{ cat.icon or 'bi-folder' }} me-2"></i>{{ cat.name }}</h6>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editCat({{ cat.id }})"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteCat({{ cat.id }})"><i class="bi bi-trash"></i></button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for sub in cat.children %}
+                    <div class="list-group-item border-0 d-flex justify-content-between align-items-center py-2">
+                        <small><i class="bi {{ sub.icon or 'bi-file-earmark' }} me-2 text-muted"></i>{{ sub.name }}</small>
+                        <small class="text-muted">{{ sub.knowledge_items.count() }} 条</small>
+                    </div>
+                    {% endfor %}
+                    {% if not cat.children %}
+                    <div class="list-group-item border-0 text-muted small text-center py-2">暂无子分类</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% if categories|length == 0 %}
+    <div class="col-12 text-center text-muted py-5">暂无分类，点击上方按钮创建</div>
+    {% endif %}
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="catModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: #1A2A4A; color: white;">
+                <h6 class="modal-title"><span id="catModalTitle">新建分类</span></h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="catId">
+                <div class="mb-2">
+                    <label class="form-label small">名称</label>
+                    <input class="form-control form-control-sm" id="catName">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">上级分类</label>
+                    <select class="form-select form-select-sm" id="catParent">
+                        <option value="">无 (一级分类)</option>
+                        {% for cat in categories %}{% if not cat.parent_id %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endif %}{% endfor %}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">图标</label>
+                    <select class="form-select form-select-sm" id="catIcon">
+                        <option value="bi-folder">bi-folder 文件夹</option><option value="bi-journal-text">bi-journal-text 文档</option>
+                        <option value="bi-book">bi-book 书籍</option><option value="bi-clipboard-check">bi-clipboard-check 清单</option>
+                        <option value="bi-shield-check">bi-shield-check 保护</option><option value="bi-globe2">bi-globe2 国际</option>
+                        <option value="bi-cpu">bi-cpu 数字化</option><option value="bi-tags">bi-tags 标签</option>
+                        <option value="bi-hospital">bi-hospital 医院</option><option value="bi-archive">bi-archive 档案</option>
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">描述</label>
+                    <input class="form-control form-control-sm" id="catDesc">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" onclick="saveCat()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var catsData = {{ categories|map(attribute='id')|list|tojson }};
+
+function resetCatForm() {
+    document.getElementById('catId').value = '';
+    document.getElementById('catModalTitle').textContent = '新建分类';
+    ['catName','catDesc'].forEach(function(id) { document.getElementById(id).value = ''; });
+    document.getElementById('catParent').value = '';
+}
+
+function editCat(id) {
+    resetCatForm();
+    document.getElementById('catId').value = id;
+    document.getElementById('catModalTitle').textContent = '编辑分类';
+    new bootstrap.Modal(document.getElementById('catModal')).show();
+}
+
+function saveCat() {
+    var id = document.getElementById('catId').value;
+    var pid = document.getElementById('catParent').value;
+    var data = {
+        name: document.getElementById('catName').value,
+        parent_id: pid ? parseInt(pid) : null,
+        icon: document.getElementById('catIcon').value,
+        description: document.getElementById('catDesc').value
+    };
+    var url = id ? '/admin/api/categories/' + id : '/admin/api/categories';
+    fetch(url, {method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)})
+        .then(function(r) { return r.json(); })
+        .then(function() { location.reload(); });
+}
+
+function deleteCat(id) {
+    if (!confirm('确定删除此分类？')) return;
+    fetch('/admin/api/categories/' + id, {method: 'DELETE'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) { if (d.success) location.reload(); else alert(d.message); });
+}
+</script>
+{% endblock %}
