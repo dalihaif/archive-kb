@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}档案政策监控与知识库 - 首页{% endblock %}
+{% block content %}
+
+<!-- Hero 区域 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="p-4 rounded-3" style="background: linear-gradient(135deg, #1A2A4A 0%, #2C4270 100%); color: #fff;">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h2 class="fw-bold mb-2" style="color: #D4A84B;">档案政策监控与知识库</h2>
+                    <p class="mb-0 opacity-75">自动监控卫健委、档案局、法律法规等数据源，构建个人专业知识体系，赋能档案管理工作</p>
+                </div>
+                <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                    <a href="{{ url_for('main.policy_list') }}" class="btn btn-outline-light me-2">
+                        <i class="bi bi-newspaper me-1"></i>政策监控
+                    </a>
+                    <a href="{{ url_for('main.knowledge_list') }}" class="btn" style="background-color: #D4A84B; color: #1A2A4A; border-color: #D4A84B;">
+                        <i class="bi bi-book me-1"></i>知识库
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row mb-4 g-3">
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="fs-3 fw-bold" style="color: #D4A84B;">{{ source_count }}</div>
+                <div class="text-muted small">监控数据源</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="fs-3 fw-bold" style="color: #1A2A4A;">{{ policy_count }}</div>
+                <div class="text-muted small">政策法规条目</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="fs-3 fw-bold" style="color: #198754;">{{ today_policies }}</div>
+                <div class="text-muted small">今日新增</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="fs-3 fw-bold" style="color: #0d6efd;">{{ knowledge_count }}</div>
+                <div class="text-muted small">知识条目</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- 最新政策 -->
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-newspaper me-2" style="color: #D4A84B;"></i>最新政策动态</h5>
+                <a href="{{ url_for('main.policy_list') }}" class="btn btn-sm btn-outline-secondary">查看全部</a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_policies %}
+                <div class="list-group list-group-flush">
+                    {% for p in recent_policies %}
+                    <a href="{{ url_for('main.policy_detail', policy_id=p.id) }}" class="list-group-item list-group-item-action border-0 py-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="fw-medium mb-1">
+                                    {% if p.is_pinned %}<span class="badge" style="background-color: #D4A84B; color: #1A2A4A; margin-right: 6px;">置顶</span>{% endif %}
+                                    {{ p.title }}
+                                </div>
+                                <div class="small text-muted">
+                                    {% if p.authority %}<span class="me-3"><i class="bi bi-building me-1"></i>{{ p.authority }}</span>{% endif %}
+                                    {% if p.file_type %}<span class="badge bg-light text-dark">{{ p.file_type }}</span>{% endif %}
+                                    {% if p.tags %}<span class="ms-2"><i class="bi bi-tag me-1"></i>{{ p.tags }}</span>{% endif %}
+                                </div>
+                            </div>
+                            <small class="text-muted ms-3 text-nowrap">{{ p.created_at.strftime('%m-%d') if p.created_at else '' }}</small>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox display-4 d-block mb-2"></i>
+                    暂无政策数据，请先<a href="{{ url_for('admin.dashboard') }}" class="text-decoration-none">配置数据源</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 知识库与监控状态 -->
+    <div class="col-lg-5">
+        <!-- 知识库快速入口 -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-header bg-white border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-book me-2" style="color: #198754;"></i>知识库</h5>
+                <a href="{{ url_for('main.knowledge_list') }}" class="btn btn-sm btn-outline-success">浏览全部</a>
+            </div>
+            <div class="card-body">
+                {% if recent_knowledge %}
+                <div class="list-group list-group-flush">
+                    {% for item in recent_knowledge %}
+                    <a href="{{ url_for('main.knowledge_detail', item_id=item.id) }}" class="list-group-item list-group-item-action border-0 px-0 py-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <small class="fw-medium d-block">{{ item.title }}</small>
+                                <small class="text-muted">{{ item.category.name if item.category else '' }}</small>
+                            </div>
+                            <small class="text-muted text-nowrap">{{ item.updated_at.strftime('%m-%d') if item.updated_at else '' }}</small>
+                        </div>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0 py-3">知识库为空，前往<a href="{{ url_for('admin.dashboard') }}">管理后台</a>添加内容</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 最近监控日志 -->
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+                <h5 class="mb-0"><i class="bi bi-activity me-2" style="color: #0d6efd;"></i>最近监控状态</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_logs %}
+                <div class="list-group list-group-flush">
+                    {% for log in recent_logs %}
+                    <div class="list-group-item border-0 px-3 py-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small>
+                                <span class="badge {% if log.status == 'success' %}bg-success{% elif log.status == 'error' %}bg-danger{% else %}bg-secondary{% endif %} me-2">
+                                    {{ '成功' if log.status == 'success' else '失败' if log.status == 'error' else log.status }}
+                                </span>
+                                {{ log.source.name if log.source else '未知' }}
+                            </small>
+                            <small class="text-muted">
+                                {% if log.items_new %}+{{ log.items_new }}条{% endif %}
+                                {{ log.created_at.strftime('%H:%M') if log.created_at else '' }}
+                            </small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0 py-3">暂无监控记录</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
