@@ -23,3 +23,6 @@ env/
 # 日志
 *.log
 monitor_output/
+
+# 便携 Python（一键安装脚本自动下载）
+pyportable/
