@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ policy.title }} - 档案智库{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}" class="text-decoration-none">首页</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('main.policy_list') }}" class="text-decoration-none">政策监控</a></li>
+        <li class="breadcrumb-item active">{{ policy.title[:40] }}...</li>
+    </ol>
+</nav>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <h4 class="card-title mb-3">{{ policy.title }}</h4>
+
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <small class="text-muted me-3"><i class="bi bi-building me-1"></i>{{ policy.authority or '未知机构' }}</small>
+                <small class="text-muted me-3"><i class="bi bi-calendar me-1"></i>{{ policy.pub_date or '无日期' }}</small>
+                <small class="text-muted me-3"><i class="bi bi-file-earmark-text me-1"></i>{{ policy.file_type or '通知' }}</small>
+                {% if policy.doc_number %}
+                <small class="text-muted me-3"><i class="bi bi-hash me-1"></i>{{ policy.doc_number }}</small>
+                {% endif %}
+                <small class="text-muted"><i class="bi bi-eye me-1"></i>{{ policy.view_count }} 次阅读</small>
+            </div>
+            <div class="col-md-4 text-md-end mt-2 mt-md-0">
+                {% if policy.url %}
+                <a href="{{ policy.url }}" class="btn btn-sm btn-outline-secondary" target="_blank">
+                    <i class="bi bi-box-arrow-up-right me-1"></i>查看原文
+                </a>
+                {% endif %}
+                <button class="btn btn-sm btn-outline-success" onclick="navigator.clipboard.writeText(window.location.href)">
+                    <i class="bi bi-link-45deg me-1"></i>复制链接
+                </button>
+            </div>
+        </div>
+
+        {% if policy.tags %}
+        <div class="mb-3">
+            {% for tag in policy.tags.split(',') %}
+            {% if tag.strip() %}
+            <span class="badge bg-light text-dark me-1">{{ tag.strip() }}</span>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if policy.summary %}
+        <div class="p-3 mb-3 rounded" style="background-color: #f0f4ff; border-left: 4px solid #1A2A4A;">
+            <strong class="d-block mb-1" style="color: #1A2A4A;">摘要</strong>
+            <p class="mb-0">{{ policy.summary }}</p>
+        </div>
+        {% endif %}
+
+        <hr>
+
+        {% if policy.content %}
+        <div class="policy-content">
+            {{ policy.content|safe }}
+        </div>
+        {% else %}
+        <div class="text-muted text-center py-4">
+            <i class="bi bi-file-text display-4 d-block mb-2"></i>
+            暂无正文内容，请<a href="{{ policy.url }}" target="_blank">查看原文</a>
+        </div>
+        {% endif %}
+
+        <hr>
+        <small class="text-muted">抓取时间：{{ policy.created_at.strftime('%Y-%m-%d %H:%M') if policy.created_at else '' }}</small>
+    </div>
+</div>
+{% endblock %}
