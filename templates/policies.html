@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}政策监控 - 档案智库{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="bi bi-newspaper me-2" style="color: #D4A84B;"></i>政策法规监控</h4>
+    <span class="text-muted small">共 {{ pagination.total }} 条</span>
+</div>
+
+<!-- 筛选栏 -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body">
+        <form class="row g-2 align-items-end" method="get">
+            <div class="col-md-3">
+                <label class="form-label small text-muted">分类筛选</label>
+                <select class="form-select form-select-sm" name="category" onchange="this.form.submit()">
+                    <option value="">全部分类</option>
+                    {% for c in categories %}
+                    <option value="{{ c }}" {% if current_category == c %}selected{% endif %}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label small text-muted">关键词搜索</label>
+                <input type="search" class="form-control form-control-sm" name="q" value="{{ keyword }}" placeholder="搜索标题、摘要、正文...">
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-sm btn-primary w-100" style="background-color: #1A2A4A; border-color: #1A2A4A;">
+                    <i class="bi bi-search me-1"></i>搜索
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 政策列表 -->
+{% if policies %}
+<div class="list-group shadow-sm">
+    {% for p in policies %}
+    <a href="{{ url_for('main.policy_detail', policy_id=p.id) }}" class="list-group-item list-group-item-action border-0 py-3">
+        <div class="row align-items-start">
+            <div class="col-md-9">
+                <div class="fw-medium mb-1">
+                    {% if p.is_pinned %}<span class="badge me-1" style="background-color: #D4A84B; color: #1A2A4A;">置顶</span>{% endif %}
+                    {% if not p.is_read %}<span class="badge bg-danger me-1 rounded-pill">新</span>{% endif %}
+                    {{ p.title }}
+                </div>
+                {% if p.summary %}
+                <div class="text-muted small mb-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{{ p.summary }}</div>
+                {% endif %}
+                <div class="small text-muted">
+                    {% if p.authority %}<span class="me-2"><i class="bi bi-building me-1"></i>{{ p.authority }}</span>{% endif %}
+                    {% if p.tags %}<span class="me-2"><i class="bi bi-tag me-1"></i>{{ p.tags }}</span>{% endif %}
+                    {% if p.file_type %}<span class="badge bg-light text-dark me-2">{{ p.file_type }}</span>{% endif %}
+                </div>
+            </div>
+            <div class="col-md-3 text-md-end mt-2 mt-md-0">
+                <small class="text-muted d-block">{{ p.pub_date or '' }}</small>
+                <small class="text-muted"><i class="bi bi-eye me-1"></i>{{ p.view_count }}</small>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+
+<!-- 分页 -->
+{% if pagination.pages > 1 %}
+<nav class="mt-4">
+    <ul class="pagination justify-content-center">
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ pagination.prev_num }}&q={{ keyword }}&category={{ current_category }}">&laquo;</a>
+        </li>
+        {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if page_num %}
+        <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+            <a class="page-link" href="?page={{ page_num }}&q={{ keyword }}&category={{ current_category }}">{{ page_num }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% endfor %}
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+            <a class="page-link" href="?page={{ pagination.next_num }}&q={{ keyword }}&category={{ current_category }}">&raquo;</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="text-center py-5 text-muted">
+    <i class="bi bi-inbox display-1 d-block mb-3"></i>
+    <p>暂无匹配的政策数据</p>
+    <p class="small">请尝试调整筛选条件，或前往<a href="{{ url_for('admin.dashboard') }}">管理后台</a>配置数据源</p>
+</div>
+{% endif %}
+
+{% endblock %}
