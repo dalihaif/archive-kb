@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}监控源管理 - 管理后台{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb"><li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">管理后台</a></li><li class="breadcrumb-item active">监控源管理</li></ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h5><i class="bi bi-broadcast me-2" style="color: #D4A84B;"></i>监控数据源</h5>
+    <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" data-bs-toggle="modal" data-bs-target="#sourceModal" onclick="resetForm()">
+        <i class="bi bi-plus-lg me-1"></i>添加数据源
+    </button>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>名称</th>
+                    <th>分类</th>
+                    <th>方式</th>
+                    <th>状态</th>
+                    <th>最后抓取</th>
+                    <th style="width: 180px;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in sources %}
+                <tr>
+                    <td>
+                        <small class="fw-medium d-block">{{ s.name }}</small>
+                        <small class="text-muted">{{ s.url[:60] }}...</small>
+                    </td>
+                    <td><span class="badge bg-light text-dark">{{ s.category }}</span></td>
+                    <td><small>{{ {'get':'HTTP','fetch':'浏览器','stealthy':'隐身'}.get(s.crawl_method, s.crawl_method) }}</small></td>
+                    <td>
+                        <span class="badge {% if s.enabled %}bg-success{% else %}bg-secondary{% endif %}">
+                            {{ '启用' if s.enabled else '停用' }}
+                        </span>
+                    </td>
+                    <td><small>{{ s.last_crawl_at.strftime('%m-%d %H:%M') if s.last_crawl_at else '从未' }}</small></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-success" onclick="crawlSource({{ s.id }})" title="立即抓取"><i class="bi bi-arrow-repeat"></i></button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="editSource({{ s.id }})" title="编辑"><i class="bi bi-pencil"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteSource({{ s.id }})" title="删除"><i class="bi bi-trash"></i></button>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-4">暂无数据源，点击上方按钮添加</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="sourceModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background-color: #1A2A4A; color: white;">
+                <h6 class="modal-title"><i class="bi bi-broadcast me-2"></i><span id="modalTitle">添加数据源</span></h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sourceId">
+                <div class="mb-2">
+                    <label class="form-label small">名称</label>
+                    <input class="form-control form-control-sm" id="sName" placeholder="如：国家档案局 - 政策法规">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">URL</label>
+                    <input class="form-control form-control-sm" id="sUrl" placeholder="https://...">
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col-6">
+                        <label class="form-label small">分类</label>
+                        <select class="form-select form-select-sm" id="sCategory">
+                            <option>卫健委</option><option>档案局</option><option>法律法规</option><option>行业标准</option><option>学术文献</option><option>同行实践</option><option>其他</option>
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">抓取方式</label>
+                        <select class="form-select form-select-sm" id="sMethod">
+                            <option value="get">HTTP GET</option><option value="fetch">浏览器渲染</option><option value="stealthy">隐身模式</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small">CSS选择器 (JSON)</label>
+                    <textarea class="form-control form-control-sm" id="sSelectors" rows="4" placeholder='{"container":".news-list li","title":"a","date":"span","link":"a"}'></textarea>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="sEnabled" checked>
+                    <label class="form-check-label small">启用</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button class="btn btn-sm" style="background-color: #1A2A4A; color: white;" onclick="saveSource()">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var sourcesData = {{ sources|map(attribute='id')|list|tojson }};
+
+function resetForm() {
+    document.getElementById('sourceId').value = '';
+    document.getElementById('modalTitle').textContent = '添加数据源';
+    ['sName','sUrl','sSelectors'].forEach(function(id) { document.getElementById(id).value = ''; });
+    document.getElementById('sCategory').value = '卫健委';
+    document.getElementById('sMethod').value = 'get';
+    document.getElementById('sEnabled').checked = true;
+}
+
+function editSource(id) {
+    resetForm();
+    document.getElementById('sourceId').value = id;
+    document.getElementById('modalTitle').textContent = '编辑数据源';
+    var modal = new bootstrap.Modal(document.getElementById('sourceModal'));
+    modal.show();
+}
+
+function saveSource() {
+    var id = document.getElementById('sourceId').value;
+    var data = {
+        name: document.getElementById('sName').value,
+        url: document.getElementById('sUrl').value,
+        category: document.getElementById('sCategory').value,
+        crawl_method: document.getElementById('sMethod').value,
+        selectors: document.getElementById('sSelectors').value || '{}',
+        enabled: document.getElementById('sEnabled').checked
+    };
+    var url = id ? '/admin/api/sources/' + id : '/admin/api/sources';
+    var method = id ? 'PUT' : 'POST';
+
+    fetch(url, {method: method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)})
+        .then(function(r) { return r.json(); })
+        .then(function() { location.reload(); });
+}
+
+function deleteSource(id) {
+    if (!confirm('确定删除该数据源及其所有关联数据？')) return;
+    fetch('/admin/api/sources/' + id, {method: 'DELETE'})
+        .then(function() { location.reload(); });
+}
+
+function crawlSource(id) {
+    fetch('/admin/api/sources/' + id + '/crawl', {method: 'POST'})
+        .then(function() { location.reload(); });
+}
+</script>
+{% endblock %}
