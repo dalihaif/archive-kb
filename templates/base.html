@@ -44,6 +44,21 @@
                             <span id="alertBadge" class="badge bg-danger ms-1" style="display:none;">0</span>
                         </a>
                     </li>
+                    {% if request.endpoint and request.endpoint.startswith('admin.') %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-list-check me-1"></i>管理菜单
+                        </a>
+                        <ul class="dropdown-menu" aria-labelledby="adminDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.dashboard') }}"><i class="bi bi-speedometer2"></i> 控制台</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.source_list') }}"><i class="bi bi-rss"></i> 数据源管理</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.policy_list') }}"><i class="bi bi-newspaper"></i> 政策管理</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.category_list') }}"><i class="bi bi-tags"></i> 分类管理</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.knowledge_list') }}"><i class="bi bi-book"></i> 知识库管理</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.news_list') }}"><i class="bi bi-globe2"></i> 行业资讯</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
                 </ul>
                 <form class="d-flex" action="{{ url_for('main.policy_list') }}" method="get">
                     <div class="input-group input-group-sm" style="max-width: 280px;">

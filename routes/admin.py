@@ -5,7 +5,7 @@ import json
 import hashlib
 import re
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, session, send_file
-from models import db, MonitorSource, Policy, Category, KnowledgeItem, MonitorLog, User
+from models import db, MonitorSource, Policy, Category, KnowledgeItem, MonitorLog, User, News
 from crawler import PolicyCrawler, compute_hash
 
 
@@ -876,3 +876,203 @@ def check_alerts():
                 break  # 每个政策只报一次
 
     return jsonify({'success': True, 'count': len(matched), 'matched': matched})
+
+
+# ===== 资讯管理 =====
+
+def _fts_search_news(keyword):
+    """FTS5 全文搜索资讯，返回匹配的 News ID 列表"""
+    try:
+        from sqlalchemy import text
+        # FTS5 查询语法：用 * 做前缀匹配
+        safe_kw = keyword.replace('"', '').replace("'", '')
+        results = db.session.execute(
+            text("SELECT rowid FROM news_fts WHERE news_fts MATCH :q LIMIT 500"),
+            {"q": f'"{safe_kw}"'}
+        ).fetchall()
+        if results:
+            return [r[0] for r in results]
+    except Exception:
+        pass
+    return None
+
+
+@admin_bp.route('/news')
+def news_list():
+    """资讯列表页面"""
+    page = request.args.get('page', 1, type=int)
+    keyword = request.args.get('q', '')
+    country = request.args.get('country', '')
+    source_id = request.args.get('source_id', 0, type=int)
+    
+    query = News.query
+    
+    if country:
+        query = query.filter(News.country == country)
+    
+    if source_id:
+        query = query.filter(News.source_id == source_id)
+    
+    if keyword:
+        fts_ids = _fts_search_news(keyword)
+        if fts_ids:
+            query = query.filter(News.id.in_(fts_ids))
+        else:
+            query = query.filter(
+                db.or_(News.title.contains(keyword), 
+                       News.summary.contains(keyword),
+                       News.content.contains(keyword),
+                       News.tags.contains(keyword))
+            )
+    
+    query = query.order_by(News.created_at.desc())
+    pagination = query.paginate(page=page, per_page=20, error_out=False)
+    
+    # 获取所有数据源（用于筛选）
+    from models import MonitorSource
+    sources = MonitorSource.query.filter_by(enabled=True).all()
+    
+    # 获取所有国家/地区（用于筛选）
+    countries = db.session.query(News.country).distinct().all()
+    country_list = [c[0] for c in countries if c[0]]
+    
+    return render_template('admin/news.html',
+        news_list=pagination.items, pagination=pagination,
+        countries=country_list, current_country=country, 
+        sources=sources, current_source_id=source_id, keyword=keyword)
+
+
+@admin_bp.route('/api/news', methods=['GET'])
+def news_get_list():
+    """获取资讯列表API"""
+    page = request.args.get('page', 1, type=int)
+    keyword = request.args.get('q', '')
+    country = request.args.get('country', '')
+    limit = request.args.get('limit', 20, type=int)
+    
+    query = News.query
+    
+    if country:
+        query = query.filter(News.country == country)
+    
+    if keyword:
+        fts_ids = _fts_search_news(keyword)
+        if fts_ids:
+            query = query.filter(News.id.in_(fts_ids))
+        else:
+            query = query.filter(
+                db.or_(News.title.contains(keyword), 
+                       News.summary.contains(keyword))
+            )
+    
+    query = query.order_by(News.pub_date.desc() if News.pub_date else News.created_at.desc())
+    pagination = query.paginate(page=page, per_page=limit, error_out=False)
+    
+    items = []
+    for news in pagination.items:
+        items.append({
+            'id': news.id,
+            'title': news.title,
+            'url': news.url,
+            'summary': news.summary,
+            'source_name': news.source_name,
+            'country': news.country,
+            'language': news.language,
+            'pub_date': str(news.pub_date) if news.pub_date else '',
+            'tags': news.tags,
+            'is_read': news.is_read,
+            'view_count': news.view_count,
+            'created_at': str(news.created_at)
+        })
+    
+    return jsonify({
+        'success': True,
+        'items': items,
+        'total': pagination.total,
+        'page': page,
+        'per_page': limit
+    })
+
+
+@admin_bp.route('/api/news/<int:news_id>', methods=['GET'])
+def news_get(news_id):
+    """获取单条资讯详情"""
+    news = News.query.get_or_404(news_id)
+    
+    # 标记为已读
+    if not news.is_read:
+        news.is_read = True
+        db.session.commit()
+    
+    return jsonify({
+        'success': True,
+        'news': {
+            'id': news.id,
+            'title': news.title,
+            'url': news.url,
+            'summary': news.summary,
+            'content': news.content,
+            'source_name': news.source_name,
+            'country': news.country,
+            'language': news.language,
+            'pub_date': str(news.pub_date) if news.pub_date else '',
+            'tags': news.tags,
+            'is_read': news.is_read,
+            'view_count': news.view_count,
+            'created_at': str(news.created_at)
+        }
+    })
+
+
+@admin_bp.route('/api/news/<int:news_id>', methods=['PUT'])
+def news_update(news_id):
+    """更新单条资讯"""
+    news = News.query.get_or_404(news_id)
+    data = request.json
+    
+    for field in ['title', 'summary', 'content', 'tags', 'is_read']:
+        if field in data:
+            setattr(news, field, data[field])
+    
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@admin_bp.route('/api/news/<int:news_id>', methods=['DELETE'])
+def news_delete(news_id):
+    """删除单条资讯"""
+    news = News.query.get_or_404(news_id)
+    db.session.delete(news)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@admin_bp.route('/api/news/batch-delete', methods=['POST'])
+def news_batch_delete():
+    """批量删除资讯"""
+    ids = request.json.get('ids', [])
+    News.query.filter(News.id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({'success': True})
+
+
+@admin_bp.route('/api/news/crawl', methods=['POST'])
+def news_crawl():
+    """手动触发资讯抓取"""
+    from crawler import NewsCrawler
+    crawler = NewsCrawler(db.session)
+    crawler.crawl_all_enabled()
+    return jsonify({'success': True, 'message': '资讯抓取任务已启动'})
+
+
+@admin_bp.route('/api/news/crawl/<int:source_id>', methods=['POST'])
+def news_crawl_source(source_id):
+    """手动触发单个数据源抓取"""
+    from models import MonitorSource
+    from crawler import NewsCrawler
+    
+    source = MonitorSource.query.get_or_404(source_id)
+    crawler = NewsCrawler(db.session)
+    crawler.crawl_source(source)
+    
+    return jsonify({'success': True, 'message': f'数据源 [{source.name}] 抓取完成'})

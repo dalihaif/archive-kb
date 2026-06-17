@@ -534,3 +534,119 @@ class PolicyCrawler:
                 self.db.add(source)
         self.db.commit()
         logger.info(f'已初始化 {len(defaults)} 个预置数据源')
+
+
+class NewsCrawler:
+    """行业资讯爬虫 - 专门用于爬取国内外档案行业资讯"""
+    
+    def __init__(self, db_session):
+        self.db = db_session
+        self.policy_crawler = PolicyCrawler(db_session)
+    
+    def crawl_source(self, source):
+        """爬取单个资讯数据源并保存到News表"""
+        from models import MonitorSource, MonitorLog, News
+        
+        start_time = time.time()
+        log_entry = MonitorLog(source_id=source.id, status='running')
+        self.db.add(log_entry)
+        self.db.flush()
+        
+        try:
+            items = self.policy_crawler._fetch_items(source)
+            log_entry.items_found = len(items)
+            new_count = 0
+            
+            for item in items:
+                content_text = f"{item.get('title', '')}{item.get('content', '')}"
+                content_hash = compute_hash(content_text)
+                
+                # 检查是否已存在
+                existing = News.query.filter_by(content_hash=content_hash).first()
+                if existing:
+                    continue
+                
+                # 确定国家和语言
+                country = '中国'
+                language = 'zh'
+                if '国际' in source.category or 'ICA' in source.name or 'Archives' in source.name:
+                    country = self._detect_country(source.name, source.url)
+                    language = 'en' if country != '中国' else 'zh'
+                
+                news = News(
+                    source_id=source.id,
+                    title=item.get('title', ''),
+                    url=item.get('url', ''),
+                    summary=item.get('summary', ''),
+                    content=item.get('content', ''),
+                    pub_date=item.get('pub_date'),
+                    source_name=source.name,
+                    country=country,
+                    language=language,
+                    tags=item.get('tags', source.category),
+                    content_hash=content_hash,
+                )
+                self.db.add(news)
+                new_count += 1
+            
+            log_entry.items_new = new_count
+            log_entry.status = 'success'
+            source.last_crawl_status = 'success'
+            
+            self.db.commit()
+            logger.info(f"[{source.name}] 资讯抓取完成: 发现{len(items)}条, 新增{new_count}条")
+            
+        except Exception as e:
+            log_entry.status = 'error'
+            log_entry.error_message = str(e)
+            source.last_crawl_status = 'error'
+            self.db.commit()
+            logger.error(f"[{source.name}] 资讯抓取失败: {e}")
+        
+        finally:
+            log_entry.duration_ms = int((time.time() - start_time) * 1000)
+            source.last_crawl_at = datetime.utcnow()
+            self.db.commit()
+    
+    def crawl_all_enabled(self):
+        """爬取所有启用的资讯数据源"""
+        from models import MonitorSource
+        # 只爬取资讯相关的数据源（可以根据category判断）
+        sources = MonitorSource.query.filter_by(enabled=True).all()
+        # 过滤出资讯数据源（可以根据名称或分类判断）
+        news_sources = [s for s in sources if self._is_news_source(s)]
+        
+        for source in news_sources:
+            try:
+                self.crawl_source(source)
+            except Exception as e:
+                logger.error(f"资讯数据源 [{source.name}] 整体失败: {e}")
+    
+    def _is_news_source(self, source):
+        """判断是否为资讯数据源"""
+        # 根据分类或名称判断
+        news_keywords = ['档案', 'archives', 'ica', 'news', '资讯', '动态']
+        for keyword in news_keywords:
+            if keyword.lower() in source.name.lower() or keyword in source.category:
+                return True
+        return False
+    
+    def _detect_country(self, source_name, source_url):
+        """根据数据源名称或URL检测国家"""
+        url_lower = source_url.lower()
+        name_lower = source_name.lower()
+        
+        if 'china' in url_lower or 'saac' in url_lower or 'danganj' in url_lower:
+            return '中国'
+        elif 'archives.gov' in url_lower or 'nara' in url_lower or 'usa' in name_lower:
+            return '美国'
+        elif 'nationalarchives.gov.uk' in url_lower or 'uk' in name_lower:
+            return '英国'
+        elif 'naa.gov.au' in url_lower or 'australia' in name_lower:
+            return '澳大利亚'
+        elif 'bac-lac.gc.ca' in url_lower or 'canada' in name_lower:
+            return '加拿大'
+        elif 'ica.org' in url_lower:
+            return '国际组织'
+        else:
+            return '其他'

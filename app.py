@@ -6,7 +6,7 @@ import hashlib
 import logging
 from flask import Flask
 from config import Config
-from models import db, User, init_fts
+from models import db, User, init_fts, init_news_sources
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
@@ -109,6 +109,10 @@ def _ensure_admin_user():
 
         db.session.commit()
         logger.info('已初始化知识库默认分类')
+
+        # 初始化国内外档案行业数据源
+        init_news_sources()
+        logger.info('已初始化国内外档案行业数据源')
 
 
 if __name__ == '__main__':

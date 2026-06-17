@@ -24,9 +24,23 @@ def init_scheduler(app):
         def crawl_job():
             with app.app_context():
                 from models import db
-                from crawler import PolicyCrawler
-                crawler = PolicyCrawler(db.session)
-                crawler.crawl_all_enabled()
+                from crawler import PolicyCrawler, NewsCrawler
+                
+                # 抓取政策法规
+                try:
+                    policy_crawler = PolicyCrawler(db.session)
+                    policy_crawler.crawl_all_enabled()
+                    logger.info('定时任务：政策法规抓取完成')
+                except Exception as e:
+                    logger.error(f'定时任务：政策法规抓取失败 - {e}')
+                
+                # 抓取行业资讯
+                try:
+                    news_crawler = NewsCrawler(db.session)
+                    news_crawler.crawl_all_enabled()
+                    logger.info('定时任务：行业资讯抓取完成')
+                except Exception as e:
+                    logger.error(f'定时任务：行业资讯抓取失败 - {e}')
 
         scheduler.add_job(
             crawl_job,

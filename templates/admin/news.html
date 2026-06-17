@@ -1,0 +1,309 @@
+{% extends "admin/base.html" %}
+
+{% block title %}行业资讯管理{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">📰 行业资讯管理</h2>
+
+<!-- 操作栏 -->
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+        <input type="text" class="form-control" id="searchInput" placeholder="搜索资讯标题/摘要/标签..." 
+               value="{{ keyword }}" style="width: 280px;" onkeyup="if(event.key==='Enter') loadNews()">
+        <select class="form-select" id="countryFilter" style="width: 150px;" onchange="loadNews()">
+            <option value="">全部国家/地区</option>
+            {% for country in countries %}
+            <option value="{{ country }}" {% if country == current_country %}selected{% endif %}>{{ country }}</option>
+            {% endfor %}
+        </select>
+        <select class="form-select" id="sourceFilter" style="width: 180px;" onchange="loadNews()">
+            <option value="">全部数据源</option>
+            {% for source in sources %}
+            <option value="{{ source.id }}" {% if source.id == current_source_id %}selected{% endif %}>{{ source.name }}</option>
+            {% endfor %}
+        </select>
+        <button class="btn btn-outline-secondary btn-sm" onclick="loadNews()">
+            <i class="bi bi-search"></i> 搜索
+        </button>
+    </div>
+    <div>
+        <button class="btn btn-success btn-sm" onclick="crawlNews()">
+            <i class="bi bi-cloud-download"></i> 抓取资讯
+        </button>
+        <button class="btn btn-outline-danger btn-sm" id="batchDeleteBtn" style="display:none;" onclick="batchDelete()">
+            <i class="bi bi-trash"></i> 批量删除
+        </button>
+    </div>
+</div>
+
+<!-- 资讯表格 -->
+<div class="table-responsive">
+    <table class="table table-hover align-middle" id="newsTable">
+        <thead class="table-light">
+            <tr>
+                <th style="width:40px"><input type="checkbox" onchange="toggleAll(this)"></th>
+                <th style="width:50%">标题</th>
+                <th style="width:100px">来源</th>
+                <th style="width:80px">国家/地区</th>
+                <th style="width:100px">发布时间</th>
+                <th style="width:80px">状态</th>
+                <th style="width:120px">操作</th>
+            </tr>
+        </thead>
+        <tbody id="newsBody">
+            {% for news in news_list %}
+            <tr>
+                <td><input type="checkbox" class="item-checkbox" value="{{ news.id }}"></td>
+                <td>
+                    <a href="javascript:void(0)" onclick="viewNews({{ news.id }})" class="text-decoration-none">
+                        {{ news.title }}
+                    </a>
+                    {% if news.tags %}
+                    <br><small class="text-muted">{{ news.tags }}</small>
+                    {% endif %}
+                </td>
+                <td>{{ news.source_name or '未知' }}</td>
+                <td>
+                    {% if news.country == '中国' %}
+                    <span class="badge bg-primary">{{ news.country }}</span>
+                    {% elif news.country == '美国' or news.country == '英国' or news.country == '澳大利亚' or news.country == '加拿大' %}
+                    <span class="badge bg-info">{{ news.country }}</span>
+                    {% else %}
+                    <span class="badge bg-secondary">{{ news.country }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ news.pub_date or '未知' }}</td>
+                <td>
+                    {% if not news.is_read %}
+                    <span class="badge bg-warning">未读</span>
+                    {% else %}
+                    <span class="badge bg-success">已读</span>
+                    {% endif %}
+                    {% if news.view_count > 0 %}
+                    <br><small class="text-muted">浏览{{ news.view_count }}次</small>
+                    {% endif %}
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="viewNews({{ news.id }})">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteNews({{ news.id }})">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center text-muted py-5">
+                    <i class="bi bi-inbox" style="font-size:2rem;"></i>
+                    <p class="mt-2">暂无资讯数据，点击"抓取资讯"按钮开始采集</p>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 分页 -->
+<nav aria-label="Page navigation">
+    <ul class="pagination justify-content-center">
+        {% if pagination.has_prev %}
+        <li class="page-item">
+            <a class="page-link" href="javascript:void(0)" onclick="goPage({{ pagination.prev_num }})">上一页</a>
+        </li>
+        {% endif %}
+        
+        {% for p in pagination.iter_pages() %}
+        {% if p %}
+        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+            <a class="page-link" href="javascript:void(0)" onclick="goPage({{ p }})">{{ p }}</a>
+        </li>
+        {% else %}
+        <li class="page-item disabled"><span class="page-link">...</span></li>
+        {% endif %}
+        {% endfor %}
+        
+        {% if pagination.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="javascript:void(0)" onclick="goPage({{ pagination.next_num }})">下一页</a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+
+<!-- 资讯详情弹窗 -->
+<div class="modal fade" id="newsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="newsModalTitle">资讯详情</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="newsModalBody">
+                <!-- 动态加载 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="visitSourceBtn" onclick="visitSource()">访问原文</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentNewsId = null;
+let currentPage = {{ pagination.page }};
+
+function loadNews(page=1) {
+    const keyword = document.getElementById('searchInput').value;
+    const country = document.getElementById('countryFilter').value;
+    const sourceId = document.getElementById('sourceFilter').value;
+    
+    let url = `/admin/news?page=${page}`;
+    if (keyword) url += `&q=${encodeURIComponent(keyword)}`;
+    if (country) url += `&country=${encodeURIComponent(country)}`;
+    if (sourceId) url += `&source_id=${sourceId}`;
+    
+    window.location.href = url;
+}
+
+function goPage(page) {
+    currentPage = page;
+    loadNews(page);
+}
+
+function toggleAll(master) {
+    const checkboxes = document.querySelectorAll('.item-checkbox');
+    checkboxes.forEach(cb => cb.checked = master.checked);
+    updateBatchButtons();
+}
+
+function updateBatchButtons() {
+    const checked = document.querySelectorAll('.item-checkbox:checked');
+    document.getElementById('batchDeleteBtn').style.display = checked.length > 0 ? 'inline-block' : 'none';
+}
+
+// 监听复选框变化
+document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('item-checkbox')) {
+        updateBatchButtons();
+    }
+});
+
+function viewNews(newsId) {
+    currentNewsId = newsId;
+    fetch(`/admin/api/news/${newsId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const news = data.news;
+                document.getElementById('newsModalTitle').textContent = news.title;
+                
+                let html = `
+                    <div class="mb-3">
+                        <strong>来源：</strong>${news.source_name || '未知'}<br>
+                        <strong>国家/地区：</strong>${news.country || '未知'}<br>
+                        <strong>发布时间：</strong>${news.pub_date || '未知'}<br>
+                        <strong>标签：</strong>${news.tags || '无'}<br>
+                        <strong>浏览次数：</strong>${news.view_count || 0}次
+                    </div>
+                    <hr>
+                    <div class="news-content">
+                `;
+                
+                if (news.content) {
+                    html += news.content;
+                } else if (news.summary) {
+                    html += `<p>${news.summary}</p>`;
+                } else {
+                    html += '<p class="text-muted">暂无详细内容</p>';
+                }
+                
+                html += '</div>';
+                
+                if (news.url) {
+                    document.getElementById('visitSourceBtn').style.display = 'inline-block';
+                    document.getElementById('visitSourceBtn').onclick = () => window.open(news.url, '_blank');
+                } else {
+                    document.getElementById('visitSourceBtn').style.display = 'none';
+                }
+                
+                document.getElementById('newsModalBody').innerHTML = html;
+                new bootstrap.Modal(document.getElementById('newsModal')).show();
+            }
+        });
+}
+
+function deleteNews(newsId) {
+    if (!confirm('确定要删除这条资讯吗？')) return;
+    
+    fetch(`/admin/api/news/${newsId}`, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('删除失败');
+            }
+        });
+}
+
+function batchDelete() {
+    const ids = Array.from(document.querySelectorAll('.item-checkbox:checked')).map(cb => parseInt(cb.value));
+    if (ids.length === 0) return;
+    if (!confirm(`确定要删除选中的 ${ids.length} 条资讯吗？`)) return;
+    
+    fetch('/admin/api/news/batch-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('批量删除失败');
+        }
+    });
+}
+
+function crawlNews() {
+    if (!confirm('确定要开始抓取资讯吗？这可能需要几分钟时间。')) return;
+    
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> 抓取中...';
+    
+    fetch('/admin/api/news/crawl', {method: 'POST'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('资讯抓取任务已启动，请稍后刷新页面查看结果。');
+                location.reload();
+            } else {
+                alert('抓取失败');
+            }
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-cloud-download"></i> 抓取资讯';
+        });
+}
+
+function visitSource() {
+    if (currentNewsId) {
+        fetch(`/admin/api/news/${currentNewsId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.news.url) {
+                    window.open(data.news.url, '_blank');
+                }
+            });
+    }
+}
+</script>
+{% endblock %}
