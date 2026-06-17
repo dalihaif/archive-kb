@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} - 知识库{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}" class="text-decoration-none">首页</a></li>
+        <li class="breadcrumb-item"><a href="{{ url_for('main.knowledge_list') }}" class="text-decoration-none">知识库</a></li>
+        {% if item.category %}
+        <li class="breadcrumb-item"><a href="{{ url_for('main.knowledge_list', category_id=item.category.id) }}" class="text-decoration-none">{{ item.category.name }}</a></li>
+        {% endif %}
+        <li class="breadcrumb-item active">{{ item.title[:40] }}...</li>
+    </ol>
+</nav>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body">
+        <h4 class="card-title mb-3">{{ item.title }}</h4>
+        <div class="mb-3">
+            <small class="text-muted me-3">
+                <i class="bi {{ item.category.icon or 'bi-folder' }} me-1"></i>{{ item.category.name if item.category else '' }}
+            </small>
+            <small class="text-muted me-3"><i class="bi bi-calendar me-1"></i>{{ item.created_at.strftime('%Y-%m-%d') if item.created_at else '' }}</small>
+            {% if item.source %}
+            <small class="text-muted me-3"><i class="bi bi-link-45deg me-1"></i>{{ item.source }}</small>
+            {% endif %}
+            <small class="text-muted"><i class="bi bi-eye me-1"></i>{{ item.view_count }} 次阅读</small>
+        </div>
+
+        {% if item.tags %}
+        <div class="mb-3">
+            {% for tag in item.tags.split(',') %}
+            {% if tag.strip() %}
+            <span class="badge bg-light text-dark me-1">{{ tag.strip() }}</span>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <hr>
+
+        <div class="knowledge-content">
+            {{ item.content|safe if item.content else '<p class="text-muted">暂无内容</p>' }}
+        </div>
+
+        {% if item.source_url %}
+        <hr>
+        <a href="{{ item.source_url }}" class="btn btn-sm btn-outline-secondary" target="_blank">
+            <i class="bi bi-box-arrow-up-right me-1"></i>查看来源
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
