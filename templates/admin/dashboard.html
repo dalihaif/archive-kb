@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}管理后台 - 档案智库{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4 class="mb-0"><i class="bi bi-speedometer2 me-2" style="color: #D4A84B;"></i>管理后台</h4>
+    <div>
+        <button id="btnCrawlAll" class="btn btn-sm" style="background-color: #D4A84B; color: #1A2A4A;" onclick="crawlAll()">
+            <i class="bi bi-arrow-repeat me-1"></i>立即全量抓取
+        </button>
+        <a href="{{ url_for('main.index') }}" class="btn btn-sm btn-outline-secondary ms-2">
+            <i class="bi bi-eye me-1"></i>前台预览
+        </a>
+        <a href="{{ url_for('admin.logout') }}" class="btn btn-sm btn-outline-danger ms-2">
+            <i class="bi bi-box-arrow-right me-1"></i>退出
+        </a>
+    </div>
+</div>
+
+<!-- 统计卡片 -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="fs-3 fw-bold" style="color: #D4A84B;">{{ source_count }}</div>
+                <div class="text-muted small">监控数据源</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="fs-3 fw-bold" style="color: #1A2A4A;">{{ policy_count }}</div>
+                <div class="text-muted small">政策条目</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="fs-3 fw-bold" style="color: #198754;">{{ today_policies }}</div>
+                <div class="text-muted small">今日新增</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="fs-3 fw-bold" style="color: #0d6efd;">{{ knowledge_count }}</div>
+                <div class="text-muted small">知识条目</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- 快捷操作 -->
+    <div class="col-lg-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom"><h6 class="mb-0"><i class="bi bi-lightning me-2"></i>快捷操作</h6></div>
+            <div class="card-body p-2">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('admin.source_list') }}" class="btn btn-outline-primary btn-sm text-start">
+                        <i class="bi bi-broadcast me-2"></i>管理监控源 ({{ source_count }})
+                    </a>
+                    <a href="{{ url_for('admin.policy_list') }}" class="btn btn-outline-secondary btn-sm text-start">
+                        <i class="bi bi-newspaper me-2"></i>管理政策条目 ({{ policy_count }})
+                    </a>
+                    <a href="{{ url_for('admin.category_list') }}" class="btn btn-outline-warning btn-sm text-start">
+                        <i class="bi bi-folder me-2"></i>管理分类体系 ({{ category_count|default(0) }})
+                    </a>
+                    <a href="{{ url_for('admin.knowledge_list') }}" class="btn btn-outline-success btn-sm text-start">
+                        <i class="bi bi-book me-2"></i>管理知识库 ({{ knowledge_count }})
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-3">
+            <div class="card-header bg-white border-bottom"><h6 class="mb-0"><i class="bi bi-pie-chart me-2"></i>数据源分布</h6></div>
+            <div class="card-body p-2">
+                {% for cat, cnt in category_stats %}
+                <div class="d-flex justify-content-between align-items-center px-3 py-1">
+                    <small>{{ cat }}</small>
+                    <span class="badge bg-light text-dark">{{ cnt }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 最近日志 -->
+    <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white border-bottom"><h6 class="mb-0"><i class="bi bi-activity me-2"></i>最近监控日志</h6></div>
+            <div class="card-body p-0" style="max-height: 480px; overflow-y: auto;">
+                {% if last_logs %}
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 5%;">状态</th>
+                            <th style="width: 30%;">数据源</th>
+                            <th style="width: 15%;">发现</th>
+                            <th style="width: 15%;">新增</th>
+                            <th style="width: 15%;">耗时</th>
+                            <th style="width: 20%;">时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in last_logs %}
+                        <tr>
+                            <td>
+                                <span class="badge {% if log.status == 'success' %}bg-success{% elif log.status == 'error' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                    {{ '✓' if log.status == 'success' else '✗' if log.status == 'error' else '…' }}
+                                </span>
+                            </td>
+                            <td><small>{{ log.source.name if log.source else '-' }}</small></td>
+                            <td><small>{{ log.items_found }}</small></td>
+                            <td><small class="text-success fw-bold">+{{ log.items_new }}</small></td>
+                            <td><small>{{ (log.duration_ms / 1000)|round(1) if log.duration_ms else '-' }}s</small></td>
+                            <td><small>{{ log.created_at.strftime('%m-%d %H:%M') if log.created_at else '' }}</small></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-center text-muted py-4">暂无日志</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function crawlAll() {
+    var btn = document.getElementById('btnCrawlAll');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>抓取中...';
+    fetch('/admin/api/crawl-all', {method: 'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            btn.innerHTML = '<i class="bi bi-check-lg me-1"></i>完成';
+            btn.className = 'btn btn-sm btn-success';
+            setTimeout(function() { location.reload(); }, 1500);
+        })
+        .catch(function() {
+            btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>失败';
+            btn.className = 'btn btn-sm btn-danger';
+        });
+}
+</script>
+{% endblock %}
