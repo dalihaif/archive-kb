@@ -1,4 +1,4 @@
-{% extends "admin/base.html" %}
+{% extends "base.html" %}
 
 {% block title %}行业资讯管理{% endblock %}
 
@@ -152,7 +152,7 @@
 
 {% endblock %}
 
-{% block extra_js %}
+{% block extra_scripts %}
 <script>
 let currentNewsId = null;
 let currentPage = {{ pagination.page }};
