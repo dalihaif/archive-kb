@@ -9,6 +9,8 @@
     <link href="https://cdn.jsdelivr.net/npm/summernote@0.9.1/dist/summernote-bs5.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
     {% block extra_head %}{% endblock %}
+    <!-- 不蒜子访客统计 -->
+    <script async src="https://busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
 </head>
 <body>
     <!-- 顶部导航栏 -->
@@ -94,6 +96,11 @@
             <span>档案政策监控与知识库 v1.0</span>
             <span class="mx-2">|</span>
             <span>为档案工作者而建</span>
+            <span class="mx-2">|</span>
+            <!-- 不蒜子访客统计 -->
+            <span>访问量 <span id="busuanzi_value_site_pv" style="color:#D4A84B;font-weight:bold;"></span> 次</span>
+            <span class="mx-2">|</span>
+            <span>访客数 <span id="busuanzi_value_site_uv" style="color:#D4A84B;font-weight:bold;"></span> 人</span>
         </div>
     </footer>
 
